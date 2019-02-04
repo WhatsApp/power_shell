@@ -1,0 +1,8 @@
+# Changelog
+Every release has a corresponding tag. Use `master` branch for fresh-from-the-oven code.
+
+## 1.0.0:
+  - Initial release
+  - Implemented calling non-exported function
+  - Fixed erl_eval deficiency (existing in escript as well, inability to make local calls for `fun local_name/Arity`)
+  - Added shell integration

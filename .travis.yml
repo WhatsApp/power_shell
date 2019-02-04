@@ -1,0 +1,9 @@
+sudo: false
+language: erlang
+otp_release:
+  - 21.2
+  - 20.0
+script: "wget https://s3.amazonaws.com/rebar3/rebar3 && escript rebar3 do edoc, eunit, ct"
+branches:
+  only:
+    - master

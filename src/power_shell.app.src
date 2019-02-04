@@ -1,0 +1,19 @@
+{application, power_shell,
+ [{description, "Erlang shell extension allowing to evaluate non-exported functions"},
+  {vsn, "1.0.0"},
+  {registered, [power_shell_cache]},
+  {mod, {power_shell_app, []}},
+  {applications,
+   [kernel,
+    stdlib
+   ]},
+  {env, [
+    % {cache_code, false},                % do not use cache, decompile every call
+    % {shell_integration, user_default}   % load helpers into user_default
+  ]},
+  {modules, [power_shell, power_shell_cache, power_shell_app, power_shell_sup]},
+
+  {maintainers, ["maximfca@gmail.com"]},
+  {licenses, ["BSD 3-clause clear"]},
+  {links, []}
+ ]}.

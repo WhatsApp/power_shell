@@ -1,0 +1,40 @@
+ ** this is the overview.doc file for the application 'power_shell' **
+
+   @author Maxim Fedorov
+   @copyright Copyright (c) WhatsApp Inc. and its affiliates. All rights reserved.
+   @version 1.0.0
+   @title power_shell: advanced system-wide Erlang shell capabilities
+   @doc power_shell can be used as an application, and in form of a library. When started as application, power_shell examines
+        <strong>shell_integration</strong> configuration parameter. It can be set to shell_default, or user_default. Depending on the
+        parameter, power_shell can load itself as user_default module (if none was loaded before), or add proxy calls to
+        already loaded user_default module.
+
+        === Evaluating non-exported functions ===
+        Enter ```power_shell:eval(Mod, Fun, [Arg1, Arg2, Arg3]).''' in the shell to evaluate function Fun in module Mod. It does
+        not need to be exported.
+        If module Mod is currently loaded, power_shell will try to locate corresponding *.beam file, load debug info chunk and
+        evaluate function Fun with supplied arguments.
+        If module is not loaded, but *.beam file can be found, power_shell does not attempt to load it. However, if there is a
+        remote (fully qualified) call, Erlang VM (BEAM) will load the file automatically.
+
+        When shell integration (injection) is enabled, evaluating non-exported functions is simplified to just ```eval(Mod, Fun, [Args].'''
+
+        === Debugging shortcuts ===
+        Available with shell integration.
+
+        == Configuration ==
+
+        During application startup, power_shell examines following application environment variables:
+
+	<ul>
+	<li>
+        <strong>cache_code</strong> (boolean, default false) - start code cache process. This process keeps decompiled beam files in
+        memory, speeding up execution if code does not change
+        </li><li>
+        <strong>shell_integration</strong> (atom, shell_default | user_default, default is user_default) - apply shell integration,
+        making ```power_shell:eval(Mod, Fun, Args)''' available in shell, ```eval(Mod, Fun, Args)'''
+        </li></ul>
+
+        It is possible to supply values using sys.config file, or via command line when starting BEAM:
+
+            ```erl -power_shell cache_code true'''
