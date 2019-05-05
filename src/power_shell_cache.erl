@@ -249,9 +249,10 @@ decompile(Mod, Loaded) when is_atom(Mod) ->
                 file:read_file_info(Filename, [{time, posix}]),
             case beam_lib:chunks(Filename, [abstract_code]) of
                 {ok, {Mod, [{abstract_code, {_, Forms}}]}} ->
+                    Expanded = erl_expand_records:module(Forms, [strict_record_tests]),
                     #module_data{
                         hash = extract_hash(Mod, Loaded),
-                        fun_map = extract_funs(Mod, Forms),
+                        fun_map = extract_funs(Mod, Expanded),
                         filename = Filename,
                         mtime = MTime
                     };

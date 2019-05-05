@@ -32,7 +32,9 @@
     callback_local_fun_obj/0, callback_local_fun_obj/1,
     remote_callback/0, remote_callback/1,
     callback_local_make_fun/0, callback_local_make_fun/1,
-    remote_callback_exported/0, remote_callback_exported/1]).
+    remote_callback_exported/0, remote_callback_exported/1,
+    record/0, record/1
+]).
 
 -export([export_all/0, remote_cb_exported/1]).
 
@@ -52,7 +54,7 @@ test_cases() ->
     [echo, preloaded, second_clause, undef, undef_local, undef_nested, recursive,
         calling_local, throwing, bad_match, function_clause, remote_callback,
         callback_local, callback_local_fun_obj, callback_local_make_fun,
-        remote_callback_exported].
+        remote_callback_exported, record].
     %[remote_callback].
     %[remote_callback].
 
@@ -144,7 +146,7 @@ local_second_clause(Arg, Selector) when is_atom(Selector) ->
     Arg + 10.
 
 local_throw(What) ->
-    throw(What).
+    rand:uniform(100) < 200 andalso throw(What).
 
 local_throwing() ->
     local_throw(ball),
@@ -156,7 +158,7 @@ local_bad_match() ->
     ok.
 
 local_do_bad_match(What) ->
-    two = What,
+    true = What =:= rand:uniform(100),
     ok.
 
 local_function_clause() ->
@@ -209,6 +211,13 @@ export_all() ->
     local_cb_fun(1),
     local_throwing(),
     local_bad_match().
+
+-record(rec, {first= "1", second, third = initial}).
+create_record() ->
+    #rec{third = application:get_env(kernel, missing, 3), first = "1"}.
+
+modify_record(#rec{} = Rec) ->
+    Rec#rec{third = 10, second = "2"}.
 
 %%--------------------------------------------------------------------
 %% Function: TestCase() -> Info
@@ -332,6 +341,14 @@ remote_callback(_Config) ->
     L = lists:seq(1, 20),
     ?assertEqual(remote_cb_init(L), power_shell:eval(?MODULE, remote_cb_init, [L])),
     ok.
+
+record() ->
+    [{doc, "Tests records - creation & modification"}].
+
+record(_Config) ->
+    Rec = create_record(),
+    ?assertEqual(Rec, power_shell:eval(?MODULE, create_record, [])),
+    ?assertEqual(modify_record(Rec), power_shell:eval(?MODULE, modify_record, [Rec])).
 
 %%--------------------------------------------------------------------
 %% Excepton testing helper
