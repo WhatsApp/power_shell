@@ -3,9 +3,7 @@ power_shell
 
 Advanced system-wide Erlang shell capabilities
 
-
-[![Build Status](https://travis-ci.org/WhatsApp/power_shell.png)](https://travis-ci.org/WhatsApp/power_shell)
-
+[![Build Status](https://travis-ci.com/WhatsApp/power_shell.svg?branch=master)](https://travis-ci.com/WhatsApp/power_shell)
 
 Build with rebar3:
 
