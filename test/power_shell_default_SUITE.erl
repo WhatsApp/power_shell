@@ -22,8 +22,11 @@
     user_default_inject/0, user_default_inject/1,
     failed_inject/0, failed_inject/1]).
 
-% eunit: convenient asserts, really!
--include_lib("eunit/include/eunit.hrl").
+%% Common Test headers
+-include_lib("common_test/include/ct.hrl").
+
+%% Include stdlib header to enable ?assert() for readable output
+-include_lib("stdlib/include/assert.hrl").
 
 suite() ->
     [{timetrap,{seconds,30}}].

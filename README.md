@@ -11,7 +11,7 @@ Build with rebar3:
 
     rebar3 compile
 
-Versions supported: tested with OTP-22 RC3, OTP-21 and OTP-20.
+Versions supported: tested with OTP-22, 21 and 20.
 There is no support for older OTP versions, due to changes made for R20. 
 Basic eval() worked down to R16B.
 
@@ -60,7 +60,6 @@ Features planned
 
 - [ ] shell integration, allowing to execute non-exported functions directly from the shell, using convenient syntax: 
 `some_mod:non_exported(Arg1, Arg2, Arg3).` and not `eval(some_mod, non_exported, [Arg1, Arg2, Arg3]).` 
-- [ ] search and load *.erl source file directly, do not require compiled *.beam file
 - [ ] ectl library integration
 - [ ] monitoring library integration
 - [ ] additional shell commands for debugging & troubleshooting

@@ -7,9 +7,8 @@
 %%%
 %%% Caching server may not be started, in this case get_module() does
 %%% not use caching logic and creates AST every call.
-%%% If loaded module md5 hash is changed, or *.beam/*.erl file modification
-%%% date is different from the last call, module AST gets reloaded from the
-%%% corresponding file.
+%%% If loaded module md5 hash is changed, or *.erl file modification
+%%% date is different from the last call, module AST gets reloaded.
 %%% @end
 %%%-------------------------------------------------------------------
 -module(power_shell_cache).
@@ -42,14 +41,14 @@
 -type function_map() :: #{{atom(), arity()} => function_clause()}.
 
 % For every module, store:
-%   * hash of the loaded code, if module is loaded
-%   * file name used to access the file
-%   * modification date of the file
+%   * loaded code md5 hash (undefined when *.beam is not loaded)
+%   * file name used to access the file, *.beam or *.erl (could also be 'preloaded')
+%   * modification date of the file (*.beam or source)
 % For file-based interpreter, it could be either BEAM or *.erl.
 -record(module_data, {
     hash = undefined :: binary() | undefined,
     filename = undefined :: string() | undefined,
-    mtime = undefined :: non_neg_integer() | undefined,
+    mtime = undefined :: file:date_time() | undefined,
     fun_map = #{} :: function_map()
 }).
 
@@ -130,8 +129,10 @@ init([]) ->
 handle_call({get, Mod}, _From, #state{modules = Modules} = State) ->
     %
     Loaded = is_loaded(Mod),
-    %
-    case maps:get(Mod, Modules, #module_data{}) of
+    case maps:get(Mod, Modules, error) of
+
+        error ->
+            reply_recompile(Mod, Loaded, State);
 
         #module_data{hash = Hash} when
             (Hash =:= undefined andalso Loaded =:= true);
@@ -141,12 +142,12 @@ handle_call({get, Mod}, _From, #state{modules = Modules} = State) ->
             reply_recompile(Mod, Loaded, State);
 
         #module_data{hash = undefined, filename = Filename, mtime = MTime} = ModData ->
-            % check if file has changed, and reload if it was
-            case file_changed(Filename, MTime) of
-                true ->
-                    reply_recompile(Mod, Loaded, State);
-                false ->
-                    {reply, {ok, ModData}, State}
+            % loaded from file, need to check modification time
+            case filelib:last_modified(Filename) of
+                MTime ->
+                    {reply, {ok, ModData}, State};
+                _AnotherTime ->
+                    reply_recompile(Mod, Loaded, State)
             end;
 
         #module_data{hash = Hash} = ModData ->
@@ -201,23 +202,6 @@ extract_hash(Mod, true) ->
 extract_hash(_, false) ->
     undefined.
 
-extract_funs(Mod, Forms) ->
-    %% TODO: implement source code loading, will have to run lint & records
-    % expansion
-    %case erl_lint:module(Forms) of
-    %    {ok, _Warnings} ->
-    %        ok; % ignore warnings for now - but maybe print?
-    %    {error, Errors, Warnings} ->
-    %        erlang:error({erl_lint, [{errors, Errors}, {warnings, Warnings}]})
-    %end,
-    %%
-    %Forms2 =
-    %    case HasRecs of
-    %        false -> Forms;
-    %        true  -> erl_expand_records:module(Forms, [])
-    %    end,
-    select_funs(Mod, Forms).
-
 select_funs(Mod, Forms) ->
     lists:foldl(
         fun ({function, _, FunName, Arity, _} = Body, FunMap) ->
@@ -231,63 +215,48 @@ select_funs(Mod, Forms) ->
                 FunMap
         end, #{module => Mod}, Forms).
 
-% may error enoent for missing code
-%           {enoent, abstract_code} for missing debug_info
+% may error enoent for missing beam & source files
+%           {enoent, abstract_code} for missing debug_info and source file
 %           {badmatch, ActualName} for wrong module name
 %           {beam_lib, Reason} for beam_lib error
 -spec decompile(Module :: module(), Loaded :: boolean()) -> module_data().
 decompile(Mod, Loaded) when is_atom(Mod) ->
-    case code:which(Mod) of
-        Filename when is_list(Filename) ->
-            % race condition: code:which() may find the file being
-            %   deleted at this very moment. Just don't care,
-            %   this is a weird enough situation not to handle it.
-            % Another method would be to compare md5 embedded in the
-            %   chunks, but that feels too much for a simple piece
-            %   of code
-            {ok, #file_info{mtime = MTime}} =
-                file:read_file_info(Filename, [{time, posix}]),
-            case beam_lib:chunks(Filename, [abstract_code]) of
-                {ok, {Mod, [{abstract_code, {_, Forms}}]}} ->
-                    Expanded = erl_expand_records:module(Forms, [strict_record_tests]),
-                    #module_data{
-                        hash = extract_hash(Mod, Loaded),
-                        fun_map = extract_funs(Mod, Expanded),
-                        filename = Filename,
-                        mtime = MTime
-                    };
-                {ok,{Mod, [{abstract_code,no_abstract_code}]}} ->
-                    % no debug_info, but maybe there is a source file
-                    %   lying around? Yes, there is a chance this file
-                    %   is different from compiled BEAM version.
-                    %   This could be detected by comparing md5 of
-                    %   the compiled version, TODO: actually compare
-                    erlang:error(enoent);
-                {ok, {ActualMod, _}} ->
-                    erlang:error({badmatch, ActualMod});
-                Error ->
-                    erlang:error({beam_lib, Error})
-            end;
-        non_existing ->
+    case code:get_object_code(Mod) of
+        {Mod, Binary, Filename} ->
+            load_binary(Mod, Binary, Filename, Loaded);
+        error ->
+
             % look for source file, we might be lucky to find one
             %   and parse it instead of BEAM debug_info chunks
-            erlang:error(enoent);
-        preloaded ->
-            % preloaded modules are not to be decompiled,
-            %   so just report it
-            erlang:error(preloaded)
+            load_erl(Mod, code:where_is_file(atom_to_list(Mod) ++ ".erl"))
     end.
 
-file_changed(Filename, MTime) ->
-    case file:read_file_info(Filename, [{time, posix}]) of
-        {ok, #file_info{mtime = Time}} when Time =:= MTime ->
-            false;
-        _  ->
-            true
+load_binary(Mod, Binary, Filename, Loaded) ->
+    case beam_lib:chunks(Binary, [abstract_code]) of
+        {ok, {Mod, [{abstract_code, {_, Forms}}]}} ->
+            Expanded = erl_expand_records:module(Forms, [strict_record_tests]),
+            #module_data{
+                hash = extract_hash(Mod, Loaded),
+                fun_map = select_funs(Mod, Expanded),
+                filename = Filename,
+                mtime = filelib:last_modified(Filename)
+            };
+        {ok,{Mod, [{abstract_code,no_abstract_code}]}} ->
+            % no debug_info, but maybe there is a source file
+            %   lying around? Yes, there is a chance this file
+            %   is different from compiled BEAM version.
+            %   This could be detected by comparing md5 of
+            %   the compiled version, TODO: actually compare
+            {ok, Source} = filelib:find_source(code:which(Mod)),
+            load_erl(Mod, Source);
+        {ok, {ActualMod, _}} ->
+            erlang:error({badmatch, ActualMod});
+        Error ->
+            erlang:error({beam_lib, Error})
     end.
 
-% Joe Armstrong mentioned this in the book:
-% get_cached(Mod, #{Mod := ModData} = ModMap) ->
-%
-% However, compiler does not like it, considering Mod unbound during
-%   map key matching. So yes, do an ugly case-hack with maps:get()
+load_erl(Mod, Filename) when is_list(Filename) ->
+    {ok, Mod, Binary} = compile:file(Filename, [binary, debug_info]),
+    load_binary(Mod, Binary, Filename, false);
+load_erl(_, _) ->
+    error(enoent).

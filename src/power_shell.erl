@@ -26,18 +26,7 @@
     term().
 
 eval(Mod, Fun, Args) when is_atom(Mod), is_atom(Fun), is_list(Args) ->
-    try eval(Mod, Fun, Args, power_shell_cache:get_module(Mod)) of
-        Val ->
-            Val
-    catch
-        error:preloaded ->
-            erlang:apply(Mod, Fun, Args);
-        error:enoent ->
-            erlang:raise(error, undef, [{Mod, Fun, Args, []}]);
-        error:{unwind, Class, Reason, Stack} ->
-            % TODO: replace file atoms with actual file names in Stack
-            erlang:raise(Class, Reason, lists:reverse(Stack))
-    end.
+    eval_apply(erlang:is_builtin(Mod, Fun, length(Args)), Mod, Fun, Args).
 
 %%--------------------------------------------------------------------
 %% Compatibility: stacktrace
@@ -53,6 +42,20 @@ eval(Mod, Fun, Args) when is_atom(Mod), is_atom(Fun), is_list(Args) ->
 
 %%--------------------------------------------------------------------
 %% Internal functions
+
+eval_apply(true, Mod, Fun, Args) ->
+    erlang:apply(Mod, Fun, Args);
+eval_apply(false, Mod, Fun, Args) ->
+    try
+        eval(Mod, Fun, Args, power_shell_cache:get_module(Mod))
+    catch
+        error:enoent ->
+            erlang:raise(error, undef, [{Mod, Fun, Args, []}]);
+        error:{unwind, Class, Reason, Stack} ->
+% TODO: replace file atoms with actual file names in Stack
+            erlang:raise(Class, Reason, lists:reverse(Stack))
+    end.
+
 
 eval(Mod, Fun, Args, FunMap) ->
     Arity = length(Args),

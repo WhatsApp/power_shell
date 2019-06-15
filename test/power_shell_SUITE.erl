@@ -18,6 +18,7 @@
     suite/0]).
 
 -export([echo/0, echo/1,
+    self_echo/0, self_echo/1,
     calling_local/0, calling_local/1,
     second_clause/0, second_clause/1,
     undef/0, undef/1,
@@ -38,10 +39,11 @@
 
 -export([export_all/0, remote_cb_exported/1]).
 
+%% Common Test headers
 -include_lib("common_test/include/ct.hrl").
 
-% eunit: convenient asserts, really!
--include_lib("eunit/include/eunit.hrl").
+%% Include stdlib header to enable ?assert() for readable output
+-include_lib("stdlib/include/assert.hrl").
 
 %%--------------------------------------------------------------------
 %% Function: suite() -> Info
@@ -51,7 +53,7 @@ suite() ->
     [{timetrap,{seconds,30}}].
 
 test_cases() ->
-    [echo, preloaded, second_clause, undef, undef_local, undef_nested, recursive,
+    [echo, self_echo, preloaded, second_clause, undef, undef_local, undef_nested, recursive,
         calling_local, throwing, bad_match, function_clause, remote_callback,
         callback_local, callback_local_fun_obj, callback_local_make_fun,
         remote_callback_exported, record].
@@ -71,9 +73,9 @@ test_cases() ->
 %% N = integer() | forever
 %%--------------------------------------------------------------------
 groups() ->
-    [{direct,
+    [{direct, [parallel],
         test_cases()
-     }, {cached,
+     }, {cached, [parallel],
          test_cases()
      }].
 
@@ -123,6 +125,9 @@ end_per_group(_GroupName, _Config) ->
 
 local_unexported(Echo) ->
     Echo.
+
+local_self() ->
+    erlang:self().
 
 local_unexported_recursive(N, Acc) when N =< 0 ->
     Acc;
@@ -219,23 +224,19 @@ create_record() ->
 modify_record(#rec{} = Rec) ->
     Rec#rec{third = 10, second = "2"}.
 
-%%--------------------------------------------------------------------
-%% Function: TestCase() -> Info
-%% Info = [tuple()]
-%%--------------------------------------------------------------------
+
 echo() ->
     [{doc}, "Evaluate non-exported function"].
 
-%%--------------------------------------------------------------------
-%% Function: TestCase(Config0) ->
-%%               ok | exit() | {skip,Reason} | {comment,Comment} |
-%%               {save_config,Config1} | {skip_and_save,Reason,Config1}
-%% Config0 = Config1 = [tuple()]
-%% Reason = term()
-%% Comment = term()
-%%--------------------------------------------------------------------
 echo(_Config) ->
     ?assertEqual(local_unexported(echo), power_shell:eval(?MODULE, local_unexported, [echo])),
+    ok.
+
+self_echo() ->
+    [{doc}, "Evaluates function returning self() - to see if NIFs are working"].
+
+self_echo(_Config) ->
+    ?assertEqual(local_self(), power_shell:eval(?MODULE, local_self, [])),
     ok.
 
 undef() ->
@@ -264,6 +265,7 @@ preloaded() ->
     [{doc, "Ensure that functions from preloaded modules are just applied"}].
 
 preloaded(_Config) ->
+    ?assertEqual([2, 1], power_shell:eval(prim_zip, reverse, [[1, 2]])),
     ?assertEqual(self(), power_shell:eval(erlang, self, [])).
 
 throwing() ->
