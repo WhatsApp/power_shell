@@ -34,7 +34,8 @@
     remote_callback/0, remote_callback/1,
     callback_local_make_fun/0, callback_local_make_fun/1,
     remote_callback_exported/0, remote_callback_exported/1,
-    record/0, record/1
+    record/0, record/1,
+    try_side_effect/0, try_side_effect/1
 ]).
 
 -export([export_all/0, remote_cb_exported/1]).
@@ -56,7 +57,7 @@ test_cases() ->
     [echo, self_echo, preloaded, second_clause, undef, undef_local, undef_nested, recursive,
         calling_local, throwing, bad_match, function_clause, remote_callback,
         callback_local, callback_local_fun_obj, callback_local_make_fun,
-        remote_callback_exported, record].
+        remote_callback_exported, record, try_side_effect].
     %[remote_callback].
     %[remote_callback].
 
@@ -137,8 +138,12 @@ local_unexported_recursive(N, Acc) ->
 local_unexported_nested(N) ->
     local_unexported_recursive(N, []).
 
-local_undef_nested() ->
-    not_a_module:not_a_function(1, one, 3),
+local_undef_nested(Atom) ->
+    local_undef_nested_impl(Atom),
+    ok. % to avoid tail recursion
+
+local_undef_nested_impl(Atom) ->
+    not_a_module:not_a_function(1, Atom, 3),
     ok. % to avoid tail recursion
 
 local_second_clause(Arg, Selector) when Selector =:= one ->
@@ -212,10 +217,11 @@ remote_cb_exported_init(List) ->
 
 %% Kitchen sink to silence compiler in a good way (without suppressing warnings)
 export_all() ->
-    local_undef_nested(),
+    local_undef_nested(atom),
     local_cb_fun(1),
     local_throwing(),
-    local_bad_match().
+    local_bad_match(),
+    try_side({1, 1}).
 
 -record(rec, {first= "1", second, third = initial}).
 create_record() ->
@@ -224,6 +230,17 @@ create_record() ->
 modify_record(#rec{} = Rec) ->
     Rec#rec{third = 10, second = "2"}.
 
+try_side(MaybeBinaryInteger) ->
+    try
+        _ = binary_to_integer(MaybeBinaryInteger),
+        true
+    catch
+        error:badarg ->
+            false
+    end.
+
+%%--------------------------------------------------------------------
+%% Test Cases
 
 echo() ->
     [{doc}, "Evaluate non-exported function"].
@@ -243,23 +260,27 @@ undef() ->
     [{doc, "Ensure undefined function throws undef"}].
 
 undef(_Config) ->
-    ?assertEqual({'EXIT', {undef, [{not_a_module,not_a_function,[1,2,3], []}]}},
-        (catch power_shell:eval(not_a_module, not_a_function, [1, 2, 3]))),
+    % next 2 statments must be on the same line, otherwise stack trace info is broken
+    {current_stacktrace, Trace} = process_info(self(), current_stacktrace), Actual = (catch power_shell:eval(not_a_module, not_a_function, [1, 2, 3])),
+    Expected = {'EXIT', {undef, [{not_a_module, not_a_function,[1,2,3], []}] ++ Trace}},
+    ?assertEqual(Expected, Actual),
     ok.
 
 undef_local() ->
     [{doc, "Ensure undefined function in this very module throws undef"}].
 
 undef_local(_Config) ->
-    ?assertEqual({'EXIT', {undef, [{?MODULE,not_a_function,[1,2,3], []}]}},
-        (catch power_shell:eval(?MODULE, not_a_function, [1, 2, 3]))),
+    % next 2 statments must be on the same line, otherwise stack trace info is broken
+    {current_stacktrace, Trace} = process_info(self(), current_stacktrace), Actual = (catch power_shell:eval(?MODULE, not_a_function, [1, 2, 3])),
+    Expected = {'EXIT', {undef, [{?MODULE,not_a_function,[1,2,3], []}] ++ Trace}},
+    ?assertEqual(Expected, Actual),
     ok.
 
 undef_nested() ->
     [{doc, "Ensure undefined function throws undef even when it's nested"}].
 
 undef_nested(_Config) ->
-    exception_check(fun local_undef_nested/0, local_undef_nested).
+    exception_check(fun local_undef_nested/1, local_undef_nested, [atom]).
 
 preloaded() ->
     [{doc, "Ensure that functions from preloaded modules are just applied"}].
@@ -272,19 +293,19 @@ throwing() ->
     [{doc, "Unexported function throwing"}].
 
 throwing(_Config) ->
-    exception_check(fun local_throwing/0, local_throwing).
+    exception_check(fun local_throwing/0, local_throwing, []).
 
 bad_match() ->
     [{doc, "Unexported function throwing badmatch"}].
 
 bad_match(_Config) ->
-    exception_check(fun local_bad_match/0, local_bad_match).
+    exception_check(fun local_bad_match/0, local_bad_match, []).
 
 function_clause() ->
     [{doc, "Unexported function throwing function_clause"}].
 
 function_clause(_Config) ->
-    exception_check(fun local_function_clause/0, local_function_clause).
+    exception_check(fun local_function_clause/0, local_function_clause, []).
 
 recursive() ->
     [{doc, "Evaluate recursive function"}].
@@ -352,35 +373,36 @@ record(_Config) ->
     ?assertEqual(Rec, power_shell:eval(?MODULE, create_record, [])),
     ?assertEqual(modify_record(Rec), power_shell:eval(?MODULE, modify_record, [Rec])).
 
+try_side_effect() ->
+    [{doc, "Tests try ... catch returning value from both flows"}].
+
+try_side_effect(_Config) ->
+    ?assertEqual(false, power_shell:eval(?MODULE, try_side, [atom])).
+
 %%--------------------------------------------------------------------
-%% Excepton testing helper
+%% Exception testing helper
 %%--------------------------------------------------------------------
 %% Compatibility: stacktrace
 
+strip_dbg(Trace) ->
+    [{M, F, A} || {M, F, A, _Dbg} <- Trace].
+
 -ifdef(OTP_RELEASE).
     -define(WithStack(Cls, Err, Stk), Cls:Err:Stk).
-    -define(GetStack(Stk), Stk).
+    -define(GetStack(Stk), strip_dbg(Stk)).
 -else.
     -define(WithStack(Cls, Err, Stk), Cls:Err).
-    -define(GetStack(Stk), erlang:get_stacktrace()).
+    -define(GetStack(Stk), strip_dbg(erlang:get_stacktrace())).
 -endif.
 
-exception_check(Fun, FunAtomName) ->
-    Expected = try Fun() of
-                   Val ->
-                       throw({must_not_return, test_broken, Val})
-               catch
-                   ?WithStack(E0, X0, Stack0) ->
-                       % exclude own stack
-                       Own = tl(element(2, erlang:process_info(self(), current_stacktrace))),
-                       {E0, X0, [{M, F, A, []} || {M, F, A, _} <- lists:droplast(?GetStack(Stack0) -- Own)]}
-               end,
-    Actual = try power_shell:eval(?MODULE, FunAtomName, []) of
+exception_check(Fun, FunAtomName, Args) ->
+    % again, next line cannot be split, otherwise line information would be broken
+    Expected = try erlang:apply(Fun, Args) of Val -> throw({test_broken, Val}) catch ?WithStack(C, R, S) -> {C, R, ?GetStack(S)} end, Actual = try power_shell:eval(?MODULE, FunAtomName, Args) of
                  Val1 ->
-                     Val1
+                     throw({test_broken, Val1})
              catch
-                 ?WithStack(E, X, Stack1) ->
-                     {E, X, [{M, F, A, []} || {M, F, A, _} <- ?GetStack(Stack1)]}
+                 ?WithStack(Class, Reason, Stack) ->
+                     {Class, Reason, ?GetStack(Stack)}
              end,
     % allow line numbers and file names to slip through
     ?assertEqual(Expected, Actual).

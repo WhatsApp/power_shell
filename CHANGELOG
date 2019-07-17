@@ -1,6 +1,9 @@
 # Changelog
 Every release has a corresponding tag. Use `master` branch for fresh-from-the-oven code.
 
+## 1.1.1:
+  - Fixed handling of try ... catch clauses
+
 ## 1.1.0:
   - Added support for cover-compiled files
   - Added support for loading *.erl files when *.beam files are missing
