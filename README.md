@@ -40,6 +40,10 @@ When shell integration (injection) is enabled, evaluating non-exported functions
 ### Debugging shortcuts
 Available with shell integration.
 
+### Coverage Analysis Tool for Erlang
+Modules that were patched by 'cover' application are also supported. If a module was cover_compiled, and it is being
+evaluated with power_shell:eval, coverage analysis works as expected.
+
 Configuration
 -------------
 During application startup, power_shell examines following application environment variables:

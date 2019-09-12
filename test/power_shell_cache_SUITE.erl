@@ -9,7 +9,10 @@
 %%--------------------------------------------------------------------
 
 -export([all/0,
-    suite/0, init_per_suite/1, end_per_suite/1]).
+    suite/0,
+    init_per_suite/1, end_per_suite/1,
+    init_per_testcase/2, end_per_testcase/2
+    ]).
 
 -export([get_module/0, get_module/1,
     bad_calls/0, bad_calls/1,
@@ -19,6 +22,7 @@
     not_loaded/0, not_loaded/1,
     no_debug_info/0, no_debug_info/1,
     cover_compiled/0, cover_compiled/1,
+    cover_compiled_direct/0, cover_compiled_direct/1,
     source_reload/0, source_reload/1,
     no_beam/0, no_beam/1,
     broken_beam/0, broken_beam/1]).
@@ -37,7 +41,7 @@ suite() ->
     [{timetrap,{seconds,30}}].
 
 all() ->
-    [get_module, bad_calls, start_stop, cache_md5_check, not_loaded,
+    [get_module, bad_calls, start_stop, cache_md5_check, not_loaded, cover_compiled_direct,
         no_debug_info, cover_compiled, source_reload, no_beam, broken_beam, wrong_module].
 
 init_per_suite(Config) ->
@@ -65,10 +69,56 @@ end_per_suite(Config) ->
     ok = application:start(power_shell),
     Config.
 
+init_per_testcase(cover_compiled_direct, Config) ->
+    ok = application:stop(power_shell),
+    Config;
+init_per_testcase(_TestCase, Config) ->
+    Config.
+
+end_per_testcase(cover_compiled_direct, Config) ->
+    ok = application:start(power_shell),
+    Config;
+end_per_testcase(_TestCase, Config) ->
+    Config.
+
 touch_file(Filename) ->
     {ok, FileInfo} = file:read_file_info(Filename, [{time, posix}]),
     ok = file:write_file_info(Filename,
         FileInfo#file_info{mtime = FileInfo#file_info.mtime + 1}, [{time, posix}]).
+
+get_counter(false, Fun, Arity) ->
+    Pattern = {{bump, power_shell_default, Fun, Arity, '_', '$1'}, '$2'},
+    Lines = ets:match(cover_internal_data_table, Pattern),
+    [_ExpectedLine, Counter] = hd(Lines),
+    Counter;
+get_counter(true, Fun, Arity) ->
+    Pattern = {{bump, power_shell_default, Fun, Arity, '_', '$1'}, '$2'},
+    Lines = ets:match(cover_internal_mapping_table, Pattern),
+    [_ExpectedLine, CounterIndex] = hd(Lines),
+    counters:get(persistent_term:get({cover, power_shell_default}), CounterIndex).
+
+cover_compile_test(TestFun) ->
+    application:load(tools),
+    {ok, Vsn} = application:get_key(tools, vsn),
+    [Major, Minor | _] = [list_to_integer(V) || V <- string:lexemes(Vsn, ".")],
+    Modern = Major >= 3 andalso Minor >= 2,
+    % power_shell itself should be cover-compiled, ensure it is so
+    ?assertEqual(cover_compiled, code:which(power_shell_default)),
+    % ensure decompilation works on cover-compiled files
+    FunMap = power_shell_cache:get_module(power_shell_default),
+    ?assertNotEqual(error, maps:find({proxy_fun, 3}, FunMap)),
+    % now verify that cover-compiled modules are actually bumping their counters
+    %% new code for OTP 22
+    PrevCounter = get_counter(Modern, proxy_fun, 3),
+    % "we need to go deeper" - now within 4 apply levels
+    Reps = 10,
+    % do this "Reps" times
+    [
+        ?assertMatch({function,1,node,0, _}, TestFun())
+        || _ <- lists:seq(1, Reps)],
+    % Get the counter again
+    NextCounter = get_counter(Modern, proxy_fun, 3),
+    ?assertEqual(Reps, NextCounter - PrevCounter).
 
 get_module() ->
     [{doc, "Tests decompilation from debug_info, an check it is cached"}].
@@ -163,13 +213,14 @@ cover_compiled() ->
     [{doc, "Tests *.beam lookup for cover-compiled modules"}].
 
 cover_compiled(_Config) ->
-    % power_shell itself should be cover-compiled, ensure it is so
-    ?assertEqual(cover_compiled, code:which(power_shell)),
-    % ensure decompilation works on cover-compiled files
-    FunMap = power_shell_cache:get_module(power_shell),
-    ?assertNotEqual(error, maps:find({do_apply, 2}, FunMap)),
-    % "we need to go deeper" - now within 4 apply levels
-    ?assertEqual(node(), power_shell:eval(power_shell, do_apply, [{erlang, node}, []])).
+    cover_compile_test(fun () -> power_shell:eval(power_shell_default, proxy_fun, [erlang, node, 0]) end).
+
+cover_compiled_direct() ->
+    [{doc, "Tests *.beam lookup for cover-compiled modules, but without using gen_server cache"}].
+
+cover_compiled_direct(_Config) ->
+    FunMap = power_shell_cache:get_module(power_shell_default),
+    cover_compile_test(fun () -> power_shell:eval(power_shell_default, proxy_fun, [erlang, node, 0], FunMap) end).
 
 source_reload() ->
     [{doc, "Tests reloading source (*.erl) file"}].

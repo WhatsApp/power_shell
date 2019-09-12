@@ -12,7 +12,10 @@
 -author("maximfca@gmail.com").
 
 %% API
--export([eval/3]).
+-export([
+    eval/3,
+    eval/4
+]).
 
 %%--------------------------------------------------------------------
 %% API
@@ -26,7 +29,19 @@
     term().
 
 eval(Mod, Fun, Args) when is_atom(Mod), is_atom(Fun), is_list(Args) ->
-    eval_apply(erlang:is_builtin(Mod, Fun, length(Args)), Mod, Fun, Args).
+    eval_apply(erlang:is_builtin(Mod, Fun, length(Args)), Mod, Fun, Args, undefined).
+
+%% @doc Performs erlang:apply(Module, Fun, Args) by evaluating AST
+%%      of Module:Fun.
+%% @param Module Module name, must be either loaded or discoverable with code:which() or filelib:find_source()
+%% @param Fun function name, may not be exported
+%% @param Args List of arguments
+%% @param FunMap AST of all functions defined in Mod, as returned by power_shell_cache:get_module(Mod)
+%%        Should be used if starting power_shell_cache gen_server is undesirable.
+-spec eval( Module :: module(), Fun :: atom(), Args :: [term()], power_shell_cache:function_map()) ->
+    term().
+eval(Mod, Fun, Args, FunMap) ->
+    eval_apply(erlang:is_builtin(Mod, Fun, length(Args)), Mod, Fun, Args, FunMap).
 
 %%--------------------------------------------------------------------
 %% Compatibility: stacktrace
@@ -45,12 +60,13 @@ eval(Mod, Fun, Args) when is_atom(Mod), is_atom(Fun), is_list(Args) ->
 
 -define (STACK_TOKEN, '$power_shell_stack_trace').
 
-eval_apply(true, Mod, Fun, Args) ->
+eval_apply(true, Mod, Fun, Args, _FunMap) ->
     erlang:apply(Mod, Fun, Args);
-eval_apply(false, Mod, Fun, Args) ->
+eval_apply(false, Mod, Fun, Args, FunMap0) ->
     put(?STACK_TOKEN, []),
     try
-        eval(Mod, Fun, Args, power_shell_cache:get_module(Mod))
+        FunMap = if FunMap0 =:= undefined -> power_shell_cache:get_module(Mod); true -> FunMap0 end,
+        eval_impl(Mod, Fun, Args, FunMap)
     catch
         error:enoent ->
             {current_stacktrace, Trace} = process_info(self(), current_stacktrace),
@@ -79,7 +95,7 @@ get_stack() ->
     %[{M, F, length(Args), Dbg} || {M, F, Args, Dbg} <- Stack].
     %[hd(Stack) | [{M, F, length(Args)} || {M, F, Args} <- tl(Stack)]].
 
-eval(Mod, Fun, Args, FunMap) ->
+eval_impl(Mod, Fun, Args, FunMap) ->
     Arity = length(Args),
     case maps:get({Fun, Arity}, FunMap, undefined) of
         undefined ->
@@ -125,7 +141,7 @@ local_fun_handler(Mod, FunMap) ->
                 #{FunArity := {function, _, Fun, Arity, Clauses}} = FunMap,
                 Clauses;
             (Fun, Args) ->
-                eval(Mod, Fun, Args, FunMap)
+                eval_impl(Mod, Fun, Args, FunMap)
         end
     }.
 
