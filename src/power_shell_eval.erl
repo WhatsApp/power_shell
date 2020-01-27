@@ -315,7 +315,8 @@ expr({'fun',_Line,{function,Mod0,Name0,Arity0}}, Bs0, Lf, Ef, RBs) ->
 expr({'fun',Line,{function,Name,Arity}}, Bs0, Lf, Ef, RBs) -> % R8
     %% Do know what to do. Use LocalFunHandler to extract clauses.
     {value, Clauses, _} = local_func({function, Name, Arity}, [], Bs0, Lf, Ef, RBs),
-    expr({'fun',Line,{clauses, Clauses}}, Bs0, Lf, Ef, RBs);
+    {value, Fun, _} = expr({named_fun,Line,Name,Clauses}, new_bindings(), Lf, Ef, RBs),
+    {value, Fun, Bs0};
 
 
 expr({'fun',Line,{clauses,Cs}} = Ex, Bs, Lf, Ef, RBs) ->
@@ -533,13 +534,13 @@ find_maxline(LC) ->
 
 hide_calls(LC, MaxLine) ->
     LineId0 = MaxLine + 1,
-    {NLC, _, D} = hide(LC, LineId0, dict:new()),
+    {NLC, _, D} = hide(LC, LineId0, maps:new()),
     {NLC, D}.
 
 %% v/1 and local calls are hidden.
 hide({value,L,V}, Id, D) ->
     A = erl_anno:new(Id),
-    {{atom,A,ok}, Id+1, dict:store(Id, {value,L,V}, D)};
+    {{atom,A,ok}, Id+1, maps:put(Id, {value,L,V}, D)};
 hide({call,L,{atom,_,N}=Atom,Args}, Id0, D0) ->
     {NArgs, Id, D} = hide(Args, Id0, D0),
     C = case erl_internal:bif(N, length(Args)) of
@@ -549,7 +550,7 @@ hide({call,L,{atom,_,N}=Atom,Args}, Id0, D0) ->
                 A = erl_anno:new(Id),
                 {call,A,{remote,L,{atom,L,m},{atom,L,f}},NArgs}
         end,
-    {C, Id+1, dict:store(Id, {call,Atom}, D)};
+    {C, Id+1, maps:put(Id, {call,Atom}, D)};
 hide(T0, Id0, D0) when is_tuple(T0) ->
     {L, Id, D} = hide(tuple_to_list(T0), Id0, D0),
     {list_to_tuple(L), Id, D};
@@ -564,7 +565,7 @@ unhide_calls({atom,A,ok}=E, MaxLine, D) ->
     L = erl_anno:line(A),
     if
         L > MaxLine ->
-            dict:fetch(L, D);
+            maps:get(L, D);
         true ->
             E
     end;
@@ -572,7 +573,7 @@ unhide_calls({call,A,{remote,L,{atom,L,m},{atom,L,f}}=F,Args}, MaxLine, D) ->
     Line = erl_anno:line(A),
     if
         Line > MaxLine ->
-            {call,Atom} = dict:fetch(Line, D),
+            {call,Atom} = maps:get(Line, D),
             {call,L,Atom,unhide_calls(Args, MaxLine, D)};
         true ->
             {call,A,F,unhide_calls(Args, MaxLine, D)}

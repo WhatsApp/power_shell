@@ -35,7 +35,9 @@
     callback_local_make_fun/0, callback_local_make_fun/1,
     remote_callback_exported/0, remote_callback_exported/1,
     record/0, record/1,
-    try_side_effect/0, try_side_effect/1
+    try_side_effect/0, try_side_effect/1,
+    rebind_var/0, rebind_var/1,
+    external_fun/0, external_fun/1
 ]).
 
 -export([export_all/0, remote_cb_exported/1]).
@@ -57,9 +59,7 @@ test_cases() ->
     [echo, self_echo, preloaded, second_clause, undef, undef_local, undef_nested, recursive,
         calling_local, throwing, bad_match, function_clause, remote_callback,
         callback_local, callback_local_fun_obj, callback_local_make_fun,
-        remote_callback_exported, record, try_side_effect].
-    %[remote_callback].
-    %[remote_callback].
+        remote_callback_exported, record, try_side_effect, rebind_var, external_fun].
 
 %%--------------------------------------------------------------------
 %% Function: groups() -> [Group]
@@ -221,6 +221,8 @@ export_all() ->
     local_cb_fun(1),
     local_throwing(),
     local_bad_match(),
+    rebind([]),
+    external_filter([]),
     try_side({1, 1}).
 
 -record(rec, {first= "1", second, third = initial}).
@@ -238,6 +240,17 @@ try_side(MaybeBinaryInteger) ->
         error:badarg ->
             false
     end.
+
+internal_lambda(Atom) ->
+    RebindVar = atom_to_list(Atom),
+    is_list(RebindVar).
+
+rebind(Original) ->
+    RebindVar = Original,
+    lists:filtermap(fun internal_lambda/1, RebindVar).
+
+external_filter(List) ->
+    lists:filter(fun erlang:is_number/1, List).
 
 %%--------------------------------------------------------------------
 %% Test Cases
@@ -260,7 +273,7 @@ undef() ->
     [{doc, "Ensure undefined function throws undef"}].
 
 undef(_Config) ->
-    % next 2 statments must be on the same line, otherwise stack trace info is broken
+    % next 2 statements must be on the same line, otherwise stack trace info is broken
     {current_stacktrace, Trace} = process_info(self(), current_stacktrace), Actual = (catch power_shell:eval(not_a_module, not_a_function, [1, 2, 3])),
     Expected = {'EXIT', {undef, [{not_a_module, not_a_function,[1,2,3], []}] ++ Trace}},
     ?assertEqual(Expected, Actual),
@@ -378,6 +391,18 @@ try_side_effect() ->
 
 try_side_effect(_Config) ->
     ?assertEqual(false, power_shell:eval(?MODULE, try_side, [atom])).
+
+rebind_var() ->
+    [{doc, "Tests that variable is unbound when returned from function"}].
+
+rebind_var(Config) when is_list(Config) ->
+    ?assertEqual([atom, atom], power_shell:eval(?MODULE, rebind, [[atom, atom]])).
+
+external_fun() ->
+    [{doc, "Tests external function passed to lists:filter"}].
+
+external_fun(Config) when is_list(Config) ->
+    ?assertEqual([1, 2], power_shell:eval(?MODULE, external_filter, [[1, atom, 2, atom]])).
 
 %%--------------------------------------------------------------------
 %% Exception testing helper
