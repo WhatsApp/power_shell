@@ -165,7 +165,9 @@ do_apply({M, F}, A) ->
     pop_stack(),
     Ret;
 do_apply(Fun, A) ->
-    push_stack({undefined, Fun, length(A), []}),
+    [{Mod, Name, _, _} | _] = get_stack(), % assume that anonymous fun comes from the same module & function
+    Lambda = list_to_atom(atom_to_list(Name) ++ "-fun-$"),
+    push_stack({Mod, Lambda, length(A), []}),
     Ret = erlang:apply(Fun, A),
     pop_stack(),
     Ret.

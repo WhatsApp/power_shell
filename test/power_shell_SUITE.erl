@@ -37,7 +37,8 @@
     record/0, record/1,
     try_side_effect/0, try_side_effect/1,
     rebind_var/0, rebind_var/1,
-    external_fun/0, external_fun/1
+    external_fun/0, external_fun/1,
+    catch_apply/0, catch_apply/1
 ]).
 
 -export([export_all/0, remote_cb_exported/1]).
@@ -59,7 +60,7 @@ test_cases() ->
     [echo, self_echo, preloaded, second_clause, undef, undef_local, undef_nested, recursive,
         calling_local, throwing, bad_match, function_clause, remote_callback,
         callback_local, callback_local_fun_obj, callback_local_make_fun,
-        remote_callback_exported, record, try_side_effect, rebind_var, external_fun].
+        remote_callback_exported, record, try_side_effect, rebind_var, external_fun, catch_apply].
 
 %%--------------------------------------------------------------------
 %% Function: groups() -> [Group]
@@ -223,6 +224,7 @@ export_all() ->
     local_bad_match(),
     rebind([]),
     external_filter([]),
+    throw_applied(),
     try_side({1, 1}).
 
 -record(rec, {first= "1", second, third = initial}).
@@ -251,6 +253,13 @@ rebind(Original) ->
 
 external_filter(List) ->
     lists:filter(fun erlang:is_number/1, List).
+
+throw_applied() ->
+    Args = [[fun() -> exit(some_error) end, []], []], % this generates: {'EXIT',{{badfun,[#Fun<power_shell_SUITE.21.126501267>,[]]},
+    case catch apply(erlang, apply, Args) of
+        {'EXIT', _Reason} ->
+            throw(expected)
+    end.
 
 %%--------------------------------------------------------------------
 %% Test Cases
@@ -403,6 +412,12 @@ external_fun() ->
 
 external_fun(Config) when is_list(Config) ->
     ?assertEqual([1, 2], power_shell:eval(?MODULE, external_filter, [[1, atom, 2, atom]])).
+
+catch_apply() ->
+    [{doc, "Tests that cast catch erlang:apply works and throws as expected, not converting it to badarg"}].
+
+catch_apply(Config) when is_list(Config) ->
+    ?assertThrow(expected, power_shell:eval(?MODULE, throw_applied, [])).
 
 %%--------------------------------------------------------------------
 %% Exception testing helper

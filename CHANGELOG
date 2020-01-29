@@ -1,6 +1,9 @@
 # Changelog
 Every release has a corresponding tag. Use `master` branch for fresh-from-the-oven code.
 
+## 1.1.4
+  - Fixed incorrect anonymous function name when raising exception
+
 ## 1.1.3
   - Fixed bindings leaking into function defined locally, but called externally
 
