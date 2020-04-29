@@ -23,6 +23,8 @@
     no_debug_info/0, no_debug_info/1,
     cover_compiled/0, cover_compiled/1,
     cover_compiled_direct/0, cover_compiled_direct/1,
+    parse_transform/0, parse_transform/1,
+    source_beam_select/0, source_beam_select/1,
     source_reload/0, source_reload/1,
     no_beam/0, no_beam/1,
     broken_beam/0, broken_beam/1]).
@@ -42,7 +44,8 @@ suite() ->
 
 all() ->
     [get_module, bad_calls, start_stop, cache_md5_check, not_loaded, cover_compiled_direct,
-        no_debug_info, cover_compiled, source_reload, no_beam, broken_beam, wrong_module].
+        no_debug_info, cover_compiled, parse_transform, source_beam_select,
+        source_reload, no_beam, broken_beam, wrong_module].
 
 init_per_suite(Config) ->
     application:ensure_started(power_shell),
@@ -84,7 +87,7 @@ end_per_testcase(_TestCase, Config) ->
 touch_file(Filename) ->
     {ok, FileInfo} = file:read_file_info(Filename, [{time, posix}]),
     ok = file:write_file_info(Filename,
-        FileInfo#file_info{mtime = FileInfo#file_info.mtime + 1}, [{time, posix}]).
+        FileInfo#file_info{mtime = FileInfo#file_info.mtime + 2}, [{time, posix}]).
 
 get_counter(false, Fun, Arity) ->
     Pattern = {{bump, power_shell_default, Fun, Arity, '_', '$1'}, '$2'},
@@ -221,6 +224,59 @@ cover_compiled_direct() ->
 cover_compiled_direct(_Config) ->
     FunMap = power_shell_cache:get_module(power_shell_default),
     cover_compile_test(fun () -> power_shell:eval(power_shell_default, proxy_fun, [erlang, node, 0], FunMap) end).
+
+parse_transform() ->
+    [{doc, "Tests that parse_transforms are applied when reading source code from *.erl file"}].
+
+parse_transform(Config) ->
+    Source =
+        "-module(pt). -export([bar/0]). -include_lib(\"syntax_tools/include/merl.hrl\"). "
+        "bar() -> inner(). "
+        "inner() ->"
+            "Tuple = ?Q(\"{foo, 42}\"),"
+            "?Q(\"{foo, _@Number}\") = Tuple,"
+            "Call = ?Q(\"foo:bar(_@Number)\"),"
+            "erl_prettypr:format(merl:tree(Call)).",
+    PrivPath = ?config(priv_dir, Config),
+    true = code:add_path(PrivPath),
+    Filename = filename:join(PrivPath, "pt.erl"),
+    ok = file:write_file(Filename, Source),
+    ?assertEqual("foo:bar(42)", power_shell:eval(pt, inner, [])),
+    true = code:del_path(PrivPath),
+    ok.
+
+source_beam_select() ->
+    [{doc, "Tests reloading from the latest timestamped file (*.beam or *.erl)"}].
+
+source_beam_select(Config) ->
+    Common = "-module(m1).\n-export([bar/0]).\nbar() -> inner().\ninner() ->",
+    PrivPath = ?config(priv_dir, Config),
+    true = code:add_path(PrivPath),
+    SrcName = filename:join(PrivPath, "m1.erl"),
+    ok = file:write_file(SrcName, Common ++ "bar."),
+    touch_file(SrcName),
+    %% write *.beam file that's younger
+    Forms = [
+        begin
+            {ok, Line, _} = erl_scan:string(L),
+            {ok, F} = erl_parse:parse_form(Line),
+            F
+        end || L <- string:lexemes(Common ++ "baz.", "\n")],
+    {ok, m1, Bin} = compile:forms(Forms, [no_spawn_compiler_process, debug_info]),
+    BeamName = filename:join(PrivPath, "m1.beam"),
+    ok = file:write_file(BeamName, Bin),
+    touch_file(BeamName),
+    %% ensure new beam was selected
+    ?assertEqual(baz, power_shell:eval(m1, inner, [])),
+    %% overwrite source file, ensure old beam is still used
+    ok = file:write_file(SrcName, Common ++ "ding."),
+    touch_file(SrcName),
+    ?assertEqual(baz, power_shell:eval(m1, inner, [])),
+    %% now recompile and ensure new one is...
+    {ok, m1} = compile:file(SrcName, [no_spawn_compiler_process, debug_info, {outdir, ?config(priv_dir, Config)}]),
+    ?assertEqual(ding, power_shell:eval(m1, inner, [])),
+    true = code:del_path(PrivPath),
+    ok.
 
 source_reload() ->
     [{doc, "Tests reloading source (*.erl) file"}].

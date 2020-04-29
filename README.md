@@ -9,7 +9,7 @@ Build with rebar3:
 
     rebar3 compile
 
-Versions supported: tested with OTP-22, 21 and 20.
+Versions supported: tested with OTP 20, 21, 22 and 23.
 There is no support for older OTP versions, due to changes made for R20. 
 Basic eval() worked down to R16B.
 

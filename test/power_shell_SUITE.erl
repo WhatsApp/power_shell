@@ -141,11 +141,11 @@ local_unexported_nested(N) ->
 
 local_undef_nested(Atom) ->
     local_undef_nested_impl(Atom),
-    ok. % to avoid tail recursion
+    true = rand:uniform(100). % to avoid tail recursion
 
 local_undef_nested_impl(Atom) ->
     not_a_module:not_a_function(1, Atom, 3),
-    ok. % to avoid tail recursion
+    true = rand:uniform(100). % to avoid tail recursion
 
 local_second_clause(Arg, Selector) when Selector =:= one ->
     Arg + 1;
@@ -166,15 +166,15 @@ local_throwing() ->
 
 local_bad_match() ->
     local_do_bad_match(one),
-    ok.
+    true = rand:uniform(100).
 
 local_do_bad_match(What) ->
     true = What =:= rand:uniform(100),
     ok.
 
 local_function_clause() ->
-    local_second_clause(0, 0),
-    ok.
+    local_second_clause(0, get(test_server_logopts)),
+    true = rand:uniform(100).
 
 local_cb_fun(Arg) ->
     {cb, Arg}.

@@ -1,6 +1,9 @@
 # Changelog
 Every release has a corresponding tag. Use `master` branch for fresh-from-the-oven code.
 
+## 1.1.5
+  - Support for OTP 23
+
 ## 1.1.4
   - Fixed incorrect anonymous function name when raising exception
 
