@@ -27,6 +27,7 @@
     source_beam_select/0, source_beam_select/1,
     source_reload/0, source_reload/1,
     no_beam/0, no_beam/1,
+    on_load/0, on_load/1,
     broken_beam/0, broken_beam/1]).
 
 %% Common Test headers
@@ -45,11 +46,11 @@ suite() ->
 all() ->
     [get_module, bad_calls, start_stop, cache_md5_check, not_loaded, cover_compiled_direct,
         no_debug_info, cover_compiled, parse_transform, source_beam_select,
-        source_reload, no_beam, broken_beam, wrong_module].
+        source_reload, no_beam, on_load, broken_beam, wrong_module].
 
 init_per_suite(Config) ->
-    application:ensure_started(power_shell),
-    ok = application:stop(power_shell),
+    Loaded = application:load(power_shell),
+    ?assert(Loaded =:= ok orelse Loaded =:= {error,{already_loaded,power_shell}}),
     ok = application:set_env(power_shell, cache_code, true),
     ok = application:start(power_shell),
     % make a backup of power_shell_SUITE.beam
@@ -69,7 +70,6 @@ end_per_suite(Config) ->
     end,
     ok = application:unset_env(power_shell, cache_code),
     ok = application:stop(power_shell),
-    ok = application:start(power_shell),
     Config.
 
 init_per_testcase(cover_compiled_direct, Config) ->
@@ -307,6 +307,26 @@ no_beam(Config) ->
     ?assertNot(code:is_loaded(?VICTIM)),
     ?assertEqual(echo, power_shell:eval(?VICTIM, local_unexported, [echo])),
     ?assertNot(code:is_loaded(?VICTIM)),
+    ok.
+
+on_load() ->
+    [{doc, "Tests on_load executed for AST loaded from BEAM/source file"}].
+
+on_load(Config) ->
+    ok = application:set_env(power_shell, skip_on_load, false),
+    Source =
+        "-module(onl). -export([bar/0]). -on_load(side_effect/0). "
+        "side_effect() -> ets:new(side, [named_table, public]), ok. bar() -> inner(). inner() -> ets:insert(side, {1, 2}).",
+    PrivPath = ?config(priv_dir, Config),
+    true = code:add_path(PrivPath),
+    Filename = filename:join(PrivPath, "onl.erl"),
+    ok = file:write_file(Filename, Source),
+    power_shell_cache:get_module(onl),
+    ?assertEqual(true, power_shell:eval(onl, inner, [])),
+    true = code:del_path(PrivPath),
+    %% cleanup side effect - remove ETS table
+    true = ets:delete(side),
+    ok = application:unset_env(power_shell, skip_on_load),
     ok.
 
 broken_beam() ->

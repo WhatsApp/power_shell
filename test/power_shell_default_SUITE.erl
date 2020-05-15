@@ -35,11 +35,9 @@ all() ->
     [inject, already, shell_default_inject, user_default, user_default_inject, failed_inject].
 
 init_per_suite(Config) ->
-    ok = application:stop(power_shell),
     Config.
 
 end_per_suite(Config) ->
-    application:start(power_shell),
     Config.
 
 init_per_testcase(TC, Config)  when TC =:= shell_default_inject; TC =:= user_default;

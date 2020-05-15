@@ -100,9 +100,9 @@ all() ->
 %%--------------------------------------------------------------------
 init_per_group(cached, Config) ->
     % ensure power_shell cache started
-    application:ensure_started(power_shell),
+    Loaded = application:load(power_shell),
+    ?assert(Loaded =:= ok orelse Loaded =:= {error,{already_loaded,power_shell}}),
     ok = application:set_env(power_shell, cache_code, true),
-    ok = application:stop(power_shell),
     ok = application:start(power_shell),
     Config;
 init_per_group(_GroupName, Config) ->
@@ -117,7 +117,6 @@ init_per_group(_GroupName, Config) ->
 end_per_group(cached, _Config) ->
     ok = application:unset_env(power_shell, cache_code),
     ok = application:stop(power_shell),
-    ok = application:start(power_shell),
     ok;
 end_per_group(_GroupName, _Config) ->
     ok.

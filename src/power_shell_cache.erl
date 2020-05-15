@@ -229,6 +229,8 @@ select_funs(Mod, Forms) ->
             %   detection routine.
             %({attribute, _, module, ActualMod}, _) when ActualMod =/= Mod ->
             %    erlang:error({badmatch, ActualMod});
+            ({attribute, _, on_load, {OnLoad, 0}}, FunMap) ->
+                maps:put(on_load, OnLoad, FunMap);
             (_, FunMap) ->
                 FunMap
         end, #{module => Mod}, Forms).
@@ -280,12 +282,24 @@ maybe_cover(Expanded, cover_compiled, Mod, Filename, Loaded, #module_data{fun_ma
     Covered = cover_unsafe_internal_compile(Mod, is_modern_cover(), Expanded, MainFile, FunMap),
     maybe_cover(Covered, undefined, Mod, Filename, Loaded, undefined);
 maybe_cover(Expanded, _File, Mod, Filename, Loaded, _Cover) ->
+    FunMap = select_funs(Mod, Expanded),
     #module_data{
         hash = extract_hash(Mod, Loaded),
-        fun_map = select_funs(Mod, Expanded),
+        fun_map = maybe_onload(
+            %% compatibility behaviour: power_shell was skipping on_load
+            application:get_env(power_shell, skip_on_load, true),
+            Mod,
+            maps:get(on_load, FunMap, false),
+            FunMap),
         filename = Filename,
         mtime = filelib:last_modified(Filename)
     }.
+
+maybe_onload(false, Mod, FunName, FunMap) ->
+    ok = power_shell:eval(Mod, FunName, [], FunMap),
+    FunMap;
+maybe_onload(true, _Mod, _, FunMap) ->
+    FunMap.
 
 is_modern_cover() ->
     Vsn = case application:get_key(tools, vsn) of
