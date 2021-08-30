@@ -2,13 +2,11 @@
 
 Advanced system-wide Erlang shell capabilities
 
-[![Build Status](https://travis-ci.com/WhatsApp/power_shell.svg?branch=master)](https://travis-ci.com/WhatsApp/power_shell)
-
 Build with rebar3:
 
     rebar3 compile
 
-Versions supported: tested with OTP 20, 21, 22 and 23.
+Versions supported: tested with OTP 20, 21, 22, 23 and 24.
 There is no support for older OTP versions, due to changes made for R20. 
 Basic eval() worked down to R16B.
 
@@ -60,11 +58,3 @@ making `power_shell:eval(Mod, Fun, Args)` available in shell, `eval(Mod, Fun, Ar
 It is possible to supply values using sys.config file, or via command line when starting BEAM:
 
     erl -power_shell cache_code true
-
-## Features planned
-
-- [ ] shell integration, allowing to execute non-exported functions directly from the shell, using convenient syntax: 
-`some_mod:non_exported(Arg1, Arg2, Arg3).` and not `eval(some_mod, non_exported, [Arg1, Arg2, Arg3]).` 
-- [ ] ectl library integration
-- [ ] monitoring library integration
-- [ ] additional shell commands for debugging & troubleshooting

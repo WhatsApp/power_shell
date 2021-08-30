@@ -107,11 +107,6 @@ start_link() ->
 %% @private
 %% @doc
 %% Initializes the server
-%%
-%% @spec init(Args) -> {ok, State} |
-%%                     {ok, State, Timeout} |
-%%                     ignore |
-%%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
 -spec(init(Args :: term()) ->
@@ -124,7 +119,6 @@ init([]) ->
 %% @private
 %% @doc
 %% Handling call messages
-%%
 %% @end
 %%--------------------------------------------------------------------
 -spec(handle_call(Request :: term(), From :: {pid(), Tag :: term()},
@@ -180,7 +174,6 @@ handle_call(Request, _From, State) ->
 %% @private
 %% @doc
 %% Handling cast messages
-%%
 %% @end
 %%--------------------------------------------------------------------
 -spec(handle_cast(Request :: term(), State :: #state{}) ->
@@ -239,7 +232,8 @@ select_funs(Mod, Forms) ->
 %           {enoent, abstract_code} for missing debug_info and source file
 %           {badmatch, ActualName} for wrong module name
 %           {beam_lib, Reason} for beam_lib error
--spec decompile(Module :: module(), Loaded :: boolean(), Cover :: function_map()) -> module_data().
+-spec decompile(Module :: module(), Loaded :: boolean(), Cover :: function_map() | undefined | need_cover) ->
+    module_data() | need_cover.
 decompile(Mod, Loaded, Cover) when is_atom(Mod) ->
     case code:get_object_code(Mod) of
         {Mod, Binary, Filename} ->

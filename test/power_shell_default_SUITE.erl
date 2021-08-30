@@ -42,8 +42,6 @@ end_per_suite(Config) ->
 
 init_per_testcase(TC, Config)  when TC =:= shell_default_inject; TC =:= user_default;
                                     TC =:= user_default_inject; TC =:= failed_inject ->
-    application:ensure_started(power_shell),
-    ok = application:stop(power_shell),
     Filename = filename:join(proplists:get_value(priv_dir, Config), "user_default"),
     [{user_default, Filename} | Config];
 init_per_testcase(_, Config) ->
@@ -142,6 +140,8 @@ failed_inject(Config) ->
         {'EXIT', {{badmatch,{error,{beam_lib, {error,beam_lib,
             {not_a_beam_file, _}}}}}, _}}}}},
         application:start(power_shell)),
+    code:purge(user_default),
+    code:delete(user_default),
     ok.
 
 make_user_default(Config, Mod, Options) ->
