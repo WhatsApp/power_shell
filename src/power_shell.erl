@@ -4,8 +4,12 @@
 %%% @doc
 %%% Implements Erlang interpreter via eval/3 function.
 %%%
-%%% Allows to 'call' functions that are not exported by interpreting
+%%% Allows to `call' functions that are not exported by interpreting
 %%% function code.
+%%%
+%%% For cases when evaluation is too slow, it's possible to recompile
+%%% a module and hot-code-load it using `export/1,2,3', and later
+%%% revert the change with `revert/1'.
 %%% @end
 %%%-------------------------------------------------------------------
 -module(power_shell).
@@ -14,8 +18,15 @@
 %% API
 -export([
     eval/3,
-    eval/4
+    eval/4,
+    export/1,
+    export/2,
+    export/3,
+    revert/1
 ]).
+
+%% Internal exports
+-export([sentinel/3]).
 
 %%--------------------------------------------------------------------
 %% API
@@ -38,25 +49,86 @@ eval(Mod, Fun, Args) when is_atom(Mod), is_atom(Fun), is_list(Args) ->
 %% @param Args List of arguments
 %% @param FunMap AST of all functions defined in Mod, as returned by power_shell_cache:get_module(Mod)
 %%        Should be used if starting power_shell_cache gen_server is undesirable.
--spec eval( Module :: module(), Fun :: atom(), Args :: [term()], power_shell_cache:function_map()) ->
+-spec eval(Module :: module(), Fun :: atom(), Args :: [term()], power_shell_cache:function_map()) ->
     term().
 eval(Mod, Fun, Args, FunMap) ->
     eval_apply(erlang:is_builtin(Mod, Fun, length(Args)), Mod, Fun, Args, FunMap).
 
-%%--------------------------------------------------------------------
-%% Compatibility: stacktrace
+%% @equiv export(Module, all, #{})
+-spec export(Module :: module()) -> pid().
+export(Mod) ->
+    export(Mod, all).
 
--ifdef(OTP_RELEASE).
-    -define(WithStack(Cls, Err, Stk), Cls:Err:Stk).
-    -define(GetStack(Stk), Stk).
--else.
-    -define(WithStack(Cls, Err, Stk), Cls:Err).
-    -define(GetStack(Stk), erlang:get_stacktrace()).
--endif.
+%% @equiv export(Module, Export, #{})
+-spec export(Module :: module(), Export :: all | [{Fun :: atom(), Arity :: non_neg_integer()}]) -> pid().
+export(Mod, Export) ->
+    export(Mod, Export, #{}).
 
+-type export_options() :: #{
+    link => boolean()
+}.
+
+%% @doc Retrieves code (AST) of the `Module' from the debug information chunk. Exports all or selected
+%%      functions and reloads the module.
+%%      A sentinel process is created for every `export' call, linked to the caller process. When
+%%      the calling process terminates, linked sentinel loads the original module back and
+%%      terminates. Sentinel process can be stopped gracefully by calling `revert(Sentinel)'.
+%%      There is no protection against multiple `export' calls interacting, and caller is
+%%      responsible for proper synchronisation. Use `eval' when no safe sequence can be found.
+%% @param Module Module name, must be either loaded or discoverable with code:which()
+%% @param Export list of tuples `{Fun, Arity}' to be exported, or `all' to export all functions.
+%% @param Options use `#{link => false}' to start the sentinel process unlinked, assuming manual
+%%       `revert' call.
+-spec export(Module :: module(), all | [{Fun :: atom(), Arity :: non_neg_integer()}],
+        export_options()) -> pid().
+export(Mod, Export, #{link := false}) ->
+    proc_lib:start(?MODULE, sentinel, [self(), Mod, Export]);
+export(Mod, Export, _Options) ->
+    proc_lib:start_link(?MODULE, sentinel, [self(), Mod, Export]).
+
+%% @doc Gracefully stops the sentinel process, causing the original module to be loaded back.
+%% @param Sentinel process to stop.
+-spec revert(Sentinel :: pid()) -> ok.
+revert(Sentinel) ->
+    proc_lib:stop(Sentinel).
 
 %%--------------------------------------------------------------------
 %% Internal functions
+%% Sentinel process
+sentinel(Parent, Mod, Export) ->
+    Options = proplists:get_value(options, Mod:module_info(compile), []),
+    {Mod, Binary, File}  = code:get_object_code(Mod),
+    {ok, {Mod, [{abstract_code, {_, Forms}}]}} = beam_lib:chunks(Binary, [abstract_code]),
+    Expanded = erl_expand_records:module(Forms, [strict_record_tests]),
+    {ok, Mod, Bin} = make_export(Expanded, Options, Export),
+    %% trap exits before loading the code
+    erlang:process_flag(trap_exit, true),
+    {module, Mod} = code:load_binary(Mod, File, Bin),
+    proc_lib:init_ack(Parent, self()),
+    receive
+        {'EXIT', Parent, _Reason} ->
+            {module, Mod} = code:load_binary(Mod, File, Binary);
+        {system, Reply, {terminate, _Reason}} ->
+            {module, Mod} = code:load_binary(Mod, File, Binary),
+            gen:reply(Reply, ok)
+    end.
+
+make_export(Forms, Options, all) ->
+    compile:forms(Forms, [export_all, binary, debug_info] ++ Options);
+make_export(Forms, Options, Exports) ->
+    Exported = insert_export(Forms, [], Exports),
+    compile:forms(Exported, [binary, debug_info] ++ Options).
+
+%% don't handle modules that export nothing, crash instead, for these modules
+%%  aren't useful anyway.
+insert_export([{attribute, Anno, export, _} = First | Tail], Passed, Exports) ->
+    ExAnno = erl_anno:new(erl_anno:line(Anno)),
+    lists:reverse(Passed) ++ [First, {attribute, ExAnno, export, Exports} | Tail];
+insert_export([Form | Tail], Passed, Exports) ->
+    insert_export(Tail, [Form | Passed], Exports).
+
+%%--------------------------------------------------------------------
+%% Evaluator
 
 -define (STACK_TOKEN, '$power_shell_stack_trace').
 
@@ -157,10 +229,10 @@ do_apply({M, F}, A) ->
     Ret = try
         erlang:apply(M, F, A)
     catch
-        ?WithStack(error, undef, Stack) ->
+        error:undef:Stack ->
             pop_stack(),
             push_stack({M, F, A, []}),
-            erlang:raise(error, undef, ?GetStack(Stack))
+            erlang:raise(error, undef, Stack)
     end,
     pop_stack(),
     Ret;

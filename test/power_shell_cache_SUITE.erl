@@ -41,7 +41,7 @@
 -define(VICTIM, power_shell_SUITE).
 
 suite() ->
-    [{timetrap,{seconds,30}}].
+    [{timetrap, {seconds, 30}}].
 
 all() ->
     [get_module, bad_calls, start_stop, cache_md5_check, not_loaded, cover_compiled_direct,

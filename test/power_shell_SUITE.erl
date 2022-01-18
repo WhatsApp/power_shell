@@ -38,7 +38,11 @@
     try_side_effect/0, try_side_effect/1,
     rebind_var/0, rebind_var/1,
     external_fun/0, external_fun/1,
-    catch_apply/0, catch_apply/1
+    catch_apply/0, catch_apply/1,
+    export/0, export/1,
+    export_partial/0, export_partial/1,
+    export_auto_revert/0, export_auto_revert/1,
+    export_no_link/0, export_no_link/1
 ]).
 
 -export([export_all/0, remote_cb_exported/1]).
@@ -54,7 +58,7 @@
 %% Info = [tuple()]
 %%--------------------------------------------------------------------
 suite() ->
-    [{timetrap,{seconds,30}}].
+    [{timetrap, {seconds, 30}}].
 
 test_cases() ->
     [echo, self_echo, preloaded, second_clause, undef, undef_local, undef_nested, recursive,
@@ -75,11 +79,11 @@ test_cases() ->
 %% N = integer() | forever
 %%--------------------------------------------------------------------
 groups() ->
-    [{direct, [parallel],
-        test_cases()
-     }, {cached, [parallel],
-         test_cases()
-     }].
+    [
+        {direct, [parallel], test_cases()},
+        {cached, [parallel], test_cases()},
+        {export, [], [export, export_partial, export_auto_revert, export_no_link]}
+    ].
 
 %%--------------------------------------------------------------------
 %% Function: all() -> GroupsAndTestCases | {skip,Reason}
@@ -89,7 +93,7 @@ groups() ->
 %% Reason = term()
 %%--------------------------------------------------------------------
 all() ->
-    [{group, direct}, {group, cached}].
+    [{group, direct}, {group, cached}, {group, export}].
 
 %%--------------------------------------------------------------------
 %% Function: init_per_group(GroupName, Config0) ->
@@ -418,6 +422,69 @@ catch_apply() ->
 catch_apply(Config) when is_list(Config) ->
     ?assertThrow(expected, power_shell:eval(?MODULE, throw_applied, [])).
 
+export() ->
+    [{doc, "Tests export_all (hot code load and revert)"}].
+
+export(Config) when is_list(Config) ->
+    ?assertException(error, undef, power_shell_export:local_unexported(success)),
+    %% find some compiler options to keep
+    CompileFlags = proplists:get_value(options, power_shell_export:module_info(compile)),
+    Sentinel = power_shell:export(power_shell_export),
+    ?assertEqual(success, power_shell_export:local_unexported(success)),
+    %% verify compile flags - original flags should be honoured!
+    NewFlags = proplists:get_value(options, power_shell_export:module_info(compile)),
+    ?assertEqual([], CompileFlags -- NewFlags),
+    %% unload now
+    power_shell:revert(Sentinel),
+    ?assertException(error, undef, power_shell_export:local_unexported(success)).
+
+export_partial() ->
+    [{doc, "Tests selective export"}].
+
+export_partial(Config) when is_list(Config) ->
+    ?assertEqual(echo, power_shell_export:export_all(echo)), %% verify echo
+    ?assertException(error, undef, power_shell_export:local_unexported(success)),
+    ?assertException(error, undef, power_shell_export:local_never(success)),
+    Sentinel = power_shell:export(power_shell_export, [{local_unexported, 1}]),
+    ?assertEqual(success, power_shell_export:local_unexported(success)),
+    %% local_never should not be expected, as it's not in the fun/arity list
+    ?assertException(error, undef, power_shell_export:local_never(success)),
+    %% unload now
+    ok = power_shell:revert(Sentinel),
+    ?assertException(error, undef, power_shell_export:local_unexported(success)).
+
+export_auto_revert() ->
+    [{doc, "Tests auto-revert when sentinel process goes down"}].
+
+export_auto_revert(Config) when is_list(Config) ->
+    ?assertException(error, undef, power_shell_export:local_unexported(success)),
+    {Pid, MRef} = spawn_monitor(fun () ->
+        power_shell:export(power_shell_export),
+        ?assertEqual(success, power_shell_export:local_unexported(success))
+          end),
+    receive
+        {'DOWN', MRef, process, Pid, normal} ->
+            ct:sleep(1000), %% can't think of any better way to wait for code load event to complete
+            ?assertException(error, undef, power_shell_export:local_unexported(success))
+    end.
+
+export_no_link() ->
+    [{doc, "Tests no auto-revert when sentinel starts unlinked"}].
+
+export_no_link(Config) when is_list(Config) ->
+    ?assertException(error, undef, power_shell_export:local_unexported(success)),
+    Self = self(),
+    spawn_link(fun () ->
+        Sentinel = power_shell:export(power_shell_export, all, #{link => false}),
+        Self ! {go, Sentinel}
+                                end),
+    receive
+        {go, Sentinel} ->
+            ?assertEqual(success, power_shell_export:local_unexported(success)),
+            ok = power_shell:revert(Sentinel),
+            ?assertException(error, undef, power_shell_export:local_unexported(success))
+    end.
+
 %%--------------------------------------------------------------------
 %% Exception testing helper
 %%--------------------------------------------------------------------
@@ -426,22 +493,14 @@ catch_apply(Config) when is_list(Config) ->
 strip_dbg(Trace) ->
     [{M, F, A} || {M, F, A, _Dbg} <- Trace].
 
--ifdef(OTP_RELEASE).
-    -define(WithStack(Cls, Err, Stk), Cls:Err:Stk).
-    -define(GetStack(Stk), strip_dbg(Stk)).
--else.
-    -define(WithStack(Cls, Err, Stk), Cls:Err).
-    -define(GetStack(Stk), strip_dbg(erlang:get_stacktrace())).
--endif.
-
 exception_check(Fun, FunAtomName, Args) ->
     % again, next line cannot be split, otherwise line information would be broken
-    Expected = try erlang:apply(Fun, Args) of Val -> throw({test_broken, Val}) catch ?WithStack(C, R, S) -> {C, R, ?GetStack(S)} end, Actual = try power_shell:eval(?MODULE, FunAtomName, Args) of
+    Expected = try erlang:apply(Fun, Args) of Val -> throw({test_broken, Val}) catch C:R:S -> {C, R, strip_dbg(S)} end, Actual = try power_shell:eval(?MODULE, FunAtomName, Args) of
                  Val1 ->
                      throw({test_broken, Val1})
              catch
-                 ?WithStack(Class, Reason, Stack) ->
-                     {Class, Reason, ?GetStack(Stack)}
+                 Class:Reason:Stack ->
+                     {Class, Reason, strip_dbg(Stack)}
              end,
     % allow line numbers and file names to slip through
     ?assertEqual(Expected, Actual).
