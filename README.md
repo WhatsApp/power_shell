@@ -1,14 +1,13 @@
 # power_shell
 
-Advanced system-wide Erlang shell capabilities
+Advanced system-wide Erlang shell capabilities. Evaluates Erlang code loaded from the module debug
+information, or source file.
 
 Build with rebar3:
 
     rebar3 compile
 
-Versions supported: tested with OTP 20, 21, 22, 23 and 24.
-There is no support for older OTP versions, due to changes made for R20. 
-Basic eval() worked down to R16B.
+Versions supported: tested with 21, 22, 23 and 24.
 
 Documentation can be built with edoc: `rebar3 edoc`
 
@@ -45,6 +44,19 @@ this behaviour, set `skip_on_load` application variable to `false`:
 
     ok = application:load(power_shell),
     ok = application:set_env(power_shell, skip_on_load, false).
+
+### Recompiling and hot-loading modules with extra functions exported
+Starting with version 1.2, power_shell can recompile an existing module exporting all or selected functions. Use
+`power_shell:export(Mod)` to export all functions. This may be used in conjunction with Common Test suites,
+allowing for white-box testing of functions that should not be exported in production code. Example:
+
+    my_case(Config) when is_list(Config) ->
+        Old = power_shell:export(prod_module),
+        WhiteBoxRet = prod_module:not_exported_fun(123),
+        power_shell:revert(Old).
+
+For reliable Common Test execution `export/1,2,3` start a linked process that will reload the original code
+upon termination. This allows to avoid failing other test cases that do not expect extra exports available.
 
 ## Configuration
 During application startup, power_shell examines following application environment variables:
