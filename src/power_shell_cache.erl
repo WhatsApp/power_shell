@@ -29,18 +29,7 @@
 -define(SERVER, ?MODULE).
 
 -include_lib("kernel/include/file.hrl").
-
--ifdef(OTP_RELEASE).
 -include_lib("kernel/include/logger.hrl").
-
--define(WithStack(Cls, Err, Stk), Cls:Err:Stk).
--define(GetStack(Stk), Stk).
--else.
--define(LOG_WARNING(A,B,C), _ = B).
-
--define(WithStack(Cls, Err, Stk), Cls:Err).
--define(GetStack(Stk), erlang:get_stacktrace()).
--endif.
 
 -type function_clause() :: {function, integer(), atom(), arity(), {clauses, erl_eval:clauses()}}.
 
@@ -202,8 +191,8 @@ reply_recompile(Mod, Loaded, #state{modules = Modules} = State) ->
         #module_data{} = ModInfo ->
             {reply, {ok, ModInfo}, State#state{modules = maps:put(Mod, ModInfo, Modules)}}
     catch
-        ?WithStack(error,Reason, Stack) ->
-            {reply, {error, Reason, ?GetStack(Stack)}, State}
+        error:Reason:Stack ->
+            {reply, {error, Reason, Stack}, State}
     end.
 
 %%%===================================================================
