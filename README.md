@@ -46,7 +46,7 @@ this behaviour, set `skip_on_load` application variable to `false`:
     ok = application:set_env(power_shell, skip_on_load, false).
 
 ### Recompiling and hot-loading modules with extra functions exported
-Starting with version 1.2, power_shell can recompile an existing module exporting all or selected functions. Use
+Starting with version 1.2.0, power_shell can recompile an existing module exporting all or selected functions. Use
 `power_shell:export(Mod)` to export all functions. This may be used in conjunction with Common Test suites,
 allowing for white-box testing of functions that should not be exported in production code. Example:
 
