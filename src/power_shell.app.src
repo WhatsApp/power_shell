@@ -14,6 +14,6 @@
   ]},
   {modules, [power_shell, power_shell_cache, power_shell_app, power_shell_sup]},
 
-  {licenses, ["BSD 3-clause clear"]},
+  {licenses, ["BSD-3-Clause-Clear"]},
   {links, [{"GitHub", "https://github.com/WhatsApp/power_shell"}]}
  ]}.
