@@ -18,7 +18,7 @@ For Elixir, the package can be installed by adding `power_shell` to your list of
 ```elixir
 def deps do
   [
-    {:power_shell, "~> 1.2.0"}
+    {:power_shell, "~> 1.2.1"}
   ]
 end
 ```
@@ -27,7 +27,7 @@ For Erlang, the package can be installed by adding `power_shell` to your list of
 
 ```erlang
 {deps, [
-    {power_shell, "1.2.0"}
+    {power_shell, "1.2.1"}
 ]}.
 ```
 
