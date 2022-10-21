@@ -1,5 +1,8 @@
 # Changelog
-Every release has a corresponding tag. Use `master` branch for fresh-from-the-oven code.
+Every release has a corresponding tag. Use `main` branch for fresh-from-the-oven code.
+
+## 1.2.1
+  - Bugfix for configurable -on_load() support
 
 ## 1.2.0
   - Added support for hot-code loaded exports
