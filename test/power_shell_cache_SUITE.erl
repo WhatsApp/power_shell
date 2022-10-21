@@ -28,6 +28,7 @@
     source_reload/0, source_reload/1,
     no_beam/0, no_beam/1,
     on_load/0, on_load/1,
+    no_on_load/0, no_on_load/1,
     broken_beam/0, broken_beam/1]).
 
 %% Common Test headers
@@ -46,7 +47,7 @@ suite() ->
 all() ->
     [get_module, bad_calls, start_stop, cache_md5_check, not_loaded, cover_compiled_direct,
         no_debug_info, cover_compiled, parse_transform, source_beam_select,
-        source_reload, no_beam, on_load, broken_beam, wrong_module].
+        source_reload, no_beam, on_load,no_on_load, broken_beam, wrong_module].
 
 init_per_suite(Config) ->
     Loaded = application:load(power_shell),
@@ -326,6 +327,24 @@ on_load(Config) ->
     true = code:del_path(PrivPath),
     %% cleanup side effect - remove ETS table
     true = ets:delete(side),
+    ok = application:unset_env(power_shell, skip_on_load),
+    ok.
+
+no_on_load() ->
+    [{doc, "Tests on_load skipped ofr modules without on_load function"}].
+
+no_on_load(Config) ->
+    ok = application:set_env(power_shell, skip_on_load, false),
+    Source =
+        "-module(no_onl). -export([bar/0]). "
+        "bar() -> inner(). inner() -> true.",
+    PrivPath = ?config(priv_dir, Config),
+    true = code:add_path(PrivPath),
+    Filename = filename:join(PrivPath, "no_onl.erl"),
+    ok = file:write_file(Filename, Source),
+    power_shell_cache:get_module(no_onl),
+    ?assert(power_shell:eval(no_onl, inner, [])),
+    true = code:del_path(PrivPath),
     ok = application:unset_env(power_shell, skip_on_load),
     ok.
 

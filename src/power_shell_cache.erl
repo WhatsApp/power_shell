@@ -278,10 +278,10 @@ maybe_cover(Expanded, _File, Mod, Filename, Loaded, _Cover) ->
         mtime = filelib:last_modified(Filename)
     }.
 
-maybe_onload(false, Mod, FunName, FunMap) ->
+maybe_onload(false, Mod, FunName, FunMap) when is_map_key(on_load, FunMap) ->
     ok = power_shell:eval(Mod, FunName, [], FunMap),
     FunMap;
-maybe_onload(true, _Mod, _, FunMap) ->
+maybe_onload(_Skip, _Mod, _, FunMap) ->
     FunMap.
 
 is_modern_cover() ->
