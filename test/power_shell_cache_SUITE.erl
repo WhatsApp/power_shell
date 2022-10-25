@@ -47,7 +47,7 @@ suite() ->
 all() ->
     [get_module, bad_calls, start_stop, cache_md5_check, not_loaded, cover_compiled_direct,
         no_debug_info, cover_compiled, parse_transform, source_beam_select,
-        source_reload, no_beam, on_load,no_on_load, broken_beam, wrong_module].
+        source_reload, no_beam, on_load, no_on_load, broken_beam, wrong_module].
 
 init_per_suite(Config) ->
     Loaded = application:load(power_shell),
@@ -331,7 +331,7 @@ on_load(Config) ->
     ok.
 
 no_on_load() ->
-    [{doc, "Tests on_load skipped ofr modules without on_load function"}].
+    [{doc, "Tests on_load skipped for modules without on_load function"}].
 
 no_on_load(Config) ->
     ok = application:set_env(power_shell, skip_on_load, false),

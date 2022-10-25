@@ -42,7 +42,8 @@
     export/0, export/1,
     export_partial/0, export_partial/1,
     export_auto_revert/0, export_auto_revert/1,
-    export_no_link/0, export_no_link/1
+    export_no_link/0, export_no_link/1,
+    recursive_eval/0, recursive_eval/1
 ]).
 
 -export([export_all/0, remote_cb_exported/1]).
@@ -63,7 +64,7 @@ suite() ->
 test_cases() ->
     [echo, self_echo, preloaded, second_clause, undef, undef_local, undef_nested, recursive,
         calling_local, throwing, bad_match, function_clause, remote_callback,
-        callback_local, callback_local_fun_obj, callback_local_make_fun,
+        callback_local, callback_local_fun_obj, callback_local_make_fun, recursive_eval,
         remote_callback_exported, record, try_side_effect, rebind_var, external_fun, catch_apply].
 
 %%--------------------------------------------------------------------
@@ -484,6 +485,23 @@ export_no_link(Config) when is_list(Config) ->
             ok = power_shell:revert(Sentinel),
             ?assertException(error, undef, power_shell_export:local_unexported(success))
     end.
+
+recursive_eval() ->
+    [{doc, "Tests on_load preserves stack"}].
+
+recursive_eval(Config) ->
+    Source =
+        "-module(recursive). -export([foo/0, bar/0]). "
+        "foo() -> ok. bar() -> power_shell:eval(recursive, foo, []), true.",
+    PrivPath = ?config(priv_dir, Config),
+    true = code:add_path(PrivPath),
+    Filename = filename:join(PrivPath, "recursive.erl"),
+    ok = file:write_file(Filename, Source),
+    PrevDict = get(),
+    ?assert(power_shell:eval(recursive, bar, [])),
+    ?assertEqual(PrevDict, get()),
+    true = code:del_path(PrivPath),
+    ok.
 
 %%--------------------------------------------------------------------
 %% Exception testing helper
