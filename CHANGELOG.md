@@ -1,6 +1,9 @@
 # Changelog
 Every release has a corresponding tag. Use `main` branch for fresh-from-the-oven code.
 
+## 1.2.2
+  - Bugfix enabling recursive power_shell invocations
+
 ## 1.2.1
   - Bugfix for configurable -on_load() support
 
