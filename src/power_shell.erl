@@ -135,7 +135,7 @@ insert_export([Form | Tail], Passed, Exports) ->
 eval_apply(true, Mod, Fun, Args, _FunMap) ->
     erlang:apply(Mod, Fun, Args);
 eval_apply(false, Mod, Fun, Args, FunMap0) ->
-    put(?STACK_TOKEN, []),
+    PreservedStack = put(?STACK_TOKEN, []),
     try
         FunMap = if FunMap0 =:= undefined -> power_shell_cache:get_module(Mod); true -> FunMap0 end,
         eval_impl(Mod, Fun, Args, FunMap)
@@ -153,7 +153,10 @@ eval_apply(false, Mod, Fun, Args, FunMap0) ->
             % recover stack from process dictionary
             erlang:raise(Class, Reason, get_stack() ++ tl(Trace))
     after
-        erase(?STACK_TOKEN)
+        case PreservedStack of
+            undefined -> erase(?STACK_TOKEN);
+            _ when is_list(PreservedStack) -> put(?STACK_TOKEN, PreservedStack)
+        end
     end.
 
 push_stack(MFA) ->
