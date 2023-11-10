@@ -276,6 +276,7 @@ throw_applied() ->
             throw(expected)
     end.
 
+-if(?OTP_RELEASE > 25).
 map_comprehension_from_list() ->
   #{N => N*N || N <- lists:seq(1, 10), N < 4}.
 
@@ -292,6 +293,7 @@ map_generator_to_list() ->
 
 map_generator_to_binary() ->
   << <<K, V>> || K := V <- #{$a => $b, $c => $d} >>.
+-endif.
 
 %%--------------------------------------------------------------------
 %% Test Cases
@@ -445,6 +447,7 @@ external_fun() ->
 external_fun(Config) when is_list(Config) ->
     ?assertEqual([1, 2], power_shell:eval(?MODULE, external_filter, [[1, atom, 2, atom]])).
 
+-if(?OTP_RELEASE > 25).
 map_comp_from_list() ->
   [{doc, "Tests handling of map comprehension introduced in OTP26"}].
 
@@ -479,6 +482,37 @@ map_gen_to_bin() ->
 map_gen_to_bin(Config) when is_list(Config) ->
   ?assertEqual("abcd",
                lists:sort(binary_to_list(power_shell:eval(?MODULE, map_generator_to_binary, [])))).
+-else.
+map_comp_from_list() ->
+  [{doc, "Tests handling of map comprehension introduced in OTP26"}].
+
+map_comp_from_list(Config) when is_list(Config) ->
+  ok.
+
+map_comp_from_bin() ->
+  [{doc, "Tests handling of map comprehension introduced in OTP26"}].
+
+map_comp_from_bin(Config) when is_list(Config) ->
+  ok.
+
+map_gen_to_map() ->
+  [{doc, "Tests handling of map generator introduced in OTP26"}].
+
+map_gen_to_map(Config) when is_list(Config) ->
+  ok.
+
+map_gen_to_list() ->
+  [{doc, "Tests handling of map generator introduced in OTP26"}].
+
+map_gen_to_list(Config) when is_list(Config) ->
+  ok.
+
+map_gen_to_bin() ->
+  [{doc, "Tests handling of map generator introduced in OTP26"}].
+
+map_gen_to_bin(Config) when is_list(Config) ->
+  ok.
+-endif.
 
 catch_apply() ->
     [{doc, "Tests that cast catch erlang:apply works and throws as expected, not converting it to badarg"}].
