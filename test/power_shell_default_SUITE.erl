@@ -60,9 +60,10 @@ inject() ->
     [{doc, "Tests power_shell injection"}].
 
 inject(_Config) ->
-    {'EXIT', {undef, _}} = (catch shell_default:eval(lists, seq, [1,2])),
+    ?assertNot(erlang:function_exported(shell_default, eval, 3)),
     ok = power_shell_default:inject(shell_default, power_shell),
     % test injected:
+    ?assert(erlang:function_exported(shell_default, eval, 3)),
     [1, 2] = shell_default:eval(lists, seq, [1,2]),
     %
     ok = power_shell_default:eject(shell_default, power_shell),
@@ -72,7 +73,7 @@ already() ->
     [{doc, "Test proxy injection on already augmented code"}].
 
 already(_Config) ->
-    {'EXIT', {undef, _}} = (catch shell_default:eval(lists, seq, [1,2])),
+    ?assertNot(erlang:function_exported(shell_default, eval, 3)),
     ok = power_shell_default:inject(shell_default, power_shell),
     {error, already_loaded} = power_shell_default:inject(shell_default, power_shell),
     ok = power_shell_default:eject(shell_default, power_shell),
