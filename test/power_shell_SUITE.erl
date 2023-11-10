@@ -234,13 +234,21 @@ export_all() ->
     local_bad_match(),
     rebind([]),
     external_filter([]),
-    map_comprehension_from_list(),
-    map_comprehension_from_binary(),
-    map_generator_to_map(),
-    map_generator_to_list(),
-    map_generator_to_binary(),
+    otp26_maps(),
     throw_applied(),
     try_side({1, 1}).
+
+-if(?OTP_RELEASE > 25).
+otp26_maps() ->
+  map_comprehension_from_list(),
+  map_comprehension_from_binary(),
+  map_generator_to_map(),
+  map_generator_to_list(),
+  map_generator_to_binary().
+-else.
+otp26_maps() ->
+  ok.
+-endif.
 
 -record(rec, {first= "1", second, third = initial}).
 create_record() ->
