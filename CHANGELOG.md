@@ -1,6 +1,9 @@
 # Changelog
 Every release has a corresponding tag. Use `main` branch for fresh-from-the-oven code.
 
+## 1.3.0
+  - Add support for map comprehensions from OTP 26
+
 ## 1.2.2
   - Bugfix enabling recursive power_shell invocations
 

@@ -1,6 +1,6 @@
 {application, power_shell,
  [{description, "Erlang shell extension allowing to evaluate non-exported functions"},
-  {vsn, "1.2.2"},
+  {vsn, "1.3.0"},
   {registered, [power_shell_cache]},
   {mod, {power_shell_app, []}},
   {applications,
