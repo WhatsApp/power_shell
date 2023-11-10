@@ -38,6 +38,11 @@
     try_side_effect/0, try_side_effect/1,
     rebind_var/0, rebind_var/1,
     external_fun/0, external_fun/1,
+    map_comp_from_list/0, map_comp_from_list/1,
+    map_comp_from_bin/0, map_comp_from_bin/1,
+    map_gen_to_map/0, map_gen_to_map/1,
+    map_gen_to_list/0, map_gen_to_list/1,
+    map_gen_to_bin/0, map_gen_to_bin/1,
     catch_apply/0, catch_apply/1,
     export/0, export/1,
     export_partial/0, export_partial/1,
@@ -65,7 +70,8 @@ test_cases() ->
     [echo, self_echo, preloaded, second_clause, undef, undef_local, undef_nested, recursive,
         calling_local, throwing, bad_match, function_clause, remote_callback,
         callback_local, callback_local_fun_obj, callback_local_make_fun, recursive_eval,
-        remote_callback_exported, record, try_side_effect, rebind_var, external_fun, catch_apply].
+        remote_callback_exported, record, try_side_effect, rebind_var, external_fun, catch_apply,
+        map_comp_from_list, map_comp_from_bin, map_gen_to_map, map_gen_to_list, map_gen_to_bin].
 
 %%--------------------------------------------------------------------
 %% Function: groups() -> [Group]
@@ -228,6 +234,11 @@ export_all() ->
     local_bad_match(),
     rebind([]),
     external_filter([]),
+    map_comprehension_from_list(),
+    map_comprehension_from_binary(),
+    map_generator_to_map(),
+    map_generator_to_list(),
+    map_generator_to_binary(),
     throw_applied(),
     try_side({1, 1}).
 
@@ -264,6 +275,23 @@ throw_applied() ->
         {'EXIT', _Reason} ->
             throw(expected)
     end.
+
+map_comprehension_from_list() ->
+  #{N => N*N || N <- lists:seq(1, 10), N < 4}.
+
+map_comprehension_from_binary() ->
+  #{X => Y || <<X,Y>> <= <<"abcdefgh">>}.
+
+map_generator_to_map() ->
+  #{V => K
+    || K := V <- #{1 => 1, 2 => 4, 3 => 9, one => one, two => four},
+       is_integer(K)}.
+
+map_generator_to_list() ->
+  lists:sort([{V, K} || K := V <- #{1 => 1, 2 => 4, 3 => 9}]).
+
+map_generator_to_binary() ->
+  << <<K, V>> || K := V <- #{$a => $b, $c => $d} >>.
 
 %%--------------------------------------------------------------------
 %% Test Cases
@@ -416,6 +444,41 @@ external_fun() ->
 
 external_fun(Config) when is_list(Config) ->
     ?assertEqual([1, 2], power_shell:eval(?MODULE, external_filter, [[1, atom, 2, atom]])).
+
+map_comp_from_list() ->
+  [{doc, "Tests handling of map comprehension introduced in OTP26"}].
+
+map_comp_from_list(Config) when is_list(Config) ->
+  ?assertEqual(#{1 => 1, 2 => 4, 3 => 9},
+               power_shell:eval(?MODULE, map_comprehension_from_list, [])).
+
+map_comp_from_bin() ->
+  [{doc, "Tests handling of map comprehension introduced in OTP26"}].
+
+map_comp_from_bin(Config) when is_list(Config) ->
+  ?assertEqual(#{$a => $b, $c => $d, $e => $f, $g => $h},
+               power_shell:eval(?MODULE, map_comprehension_from_binary, [])).
+
+map_gen_to_map() ->
+  [{doc, "Tests handling of map generator introduced in OTP26"}].
+
+map_gen_to_map(Config) when is_list(Config) ->
+  ?assertEqual(#{1 => 1, 4 => 2, 9 => 3},
+               power_shell:eval(?MODULE, map_generator_to_map, [])).
+
+map_gen_to_list() ->
+  [{doc, "Tests handling of map generator introduced in OTP26"}].
+
+map_gen_to_list(Config) when is_list(Config) ->
+  ?assertEqual([{1, 1}, {4, 2}, {9, 3}],
+               power_shell:eval(?MODULE, map_generator_to_list, [])).
+
+map_gen_to_bin() ->
+  [{doc, "Tests handling of map generator introduced in OTP26"}].
+
+map_gen_to_bin(Config) when is_list(Config) ->
+  ?assertEqual("abcd",
+               lists:sort(binary_to_list(power_shell:eval(?MODULE, map_generator_to_binary, [])))).
 
 catch_apply() ->
     [{doc, "Tests that cast catch erlang:apply works and throws as expected, not converting it to badarg"}].

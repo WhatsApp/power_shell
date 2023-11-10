@@ -274,6 +274,8 @@ expr({lc,_,E,Qs}, Bs, Lf, Ef, RBs, FUVs) ->
     eval_lc(E, Qs, Bs, Lf, Ef, RBs, FUVs);
 expr({bc,_,E,Qs}, Bs, Lf, Ef, RBs, FUVs) ->
     eval_bc(E, Qs, Bs, Lf, Ef, RBs, FUVs);
+expr({mc,_,E,Qs}, Bs, Lf, Ef, RBs, FUVs) ->
+    eval_mc(E, Qs, Bs, Lf, Ef, RBs, FUVs);
 expr({tuple,_,Es}, Bs0, Lf, Ef, RBs, FUVs) ->
     {Vs,Bs} = expr_list(Es, Bs0, Lf, Ef, FUVs),
     ret_expr(list_to_tuple(Vs), Bs, RBs);
@@ -523,6 +525,9 @@ expr({bin,_,Fs}, Bs0, Lf, Ef, RBs, FUVs) ->
 expr({remote,_,_,_}, _Bs, _Lf, _Ef, _RBs, _FUVs) ->
     erlang:raise(error, {badexpr,':'}, ?STACKTRACE).
 
+apply_error(Reason, Stack, _Anno, Bs0, Ef, RBs) ->
+    do_apply(erlang, raise, [error, Reason, Stack], Bs0, Ef, RBs).
+
 find_maxline(LC) ->
     put('$erl_eval_max_line', 0),
     F = fun(A) ->
@@ -737,17 +742,15 @@ do_apply(Mod, Func, As, Bs0, Ef, RBs) ->
 eval_lc(E, Qs, Bs, Lf, Ef, RBs, FUVs) ->
     ret_expr(lists:reverse(eval_lc1(E, Qs, Bs, Lf, Ef, FUVs, [])), Bs, RBs).
 
-eval_lc1(E, [{generate,_,P,L0}|Qs], Bs0, Lf, Ef, FUVs, Acc0) ->
-    {value,L1,_Bs1} = expr(L0, Bs0, Lf, Ef, none, FUVs),
-    CompFun = fun(Bs, Acc) -> eval_lc1(E, Qs, Bs, Lf, Ef, FUVs, Acc) end,
-    eval_generate(L1, P, Bs0, Lf, Ef, CompFun, Acc0);
-eval_lc1(E, [{b_generate,_,P,L0}|Qs], Bs0, Lf, Ef, FUVs, Acc0) ->
-    {value,Bin,_Bs1} = expr(L0, Bs0, Lf, Ef, none, FUVs),
-    CompFun = fun(Bs, Acc) -> eval_lc1(E, Qs, Bs, Lf, Ef, FUVs, Acc) end,
-    eval_b_generate(Bin, P, Bs0, Lf, Ef, CompFun, Acc0);
-eval_lc1(E, [F|Qs], Bs0, Lf, Ef, FUVs, Acc) ->
-    CompFun = fun(Bs) -> eval_lc1(E, Qs, Bs, Lf, Ef, FUVs, Acc) end,
-    eval_filter(F, Bs0, Lf, Ef, CompFun, FUVs, Acc);
+eval_lc1(E, [Q|Qs], Bs0, Lf, Ef, FUVs, Acc0) ->
+    case is_generator(Q) of
+        true ->
+            CF = fun(Bs, Acc) -> eval_lc1(E, Qs, Bs, Lf, Ef, FUVs, Acc) end,
+            eval_generator(Q, Bs0, Lf, Ef, FUVs, Acc0, CF);
+        false ->
+            CF = fun(Bs) -> eval_lc1(E, Qs, Bs, Lf, Ef, FUVs, Acc0) end,
+            eval_filter(Q, Bs0, Lf, Ef, CF, FUVs, Acc0)
+    end;
 eval_lc1(E, [], Bs, Lf, Ef, FUVs, Acc) ->
     {value,V,_} = expr(E, Bs, Lf, Ef, none, FUVs),
     [V|Acc].
@@ -759,20 +762,66 @@ eval_lc1(E, [], Bs, Lf, Ef, FUVs, Acc) ->
 eval_bc(E, Qs, Bs, Lf, Ef, RBs, FUVs) ->
     ret_expr(eval_bc1(E, Qs, Bs, Lf, Ef, FUVs, <<>>), Bs, RBs).
 
-eval_bc1(E, [{b_generate,_,P,L0}|Qs], Bs0, Lf, Ef, FUVs, Acc0) ->
-    {value,Bin,_Bs1} = expr(L0, Bs0, Lf, Ef, none, FUVs),
-    CompFun = fun(Bs, Acc) -> eval_bc1(E, Qs, Bs, Lf, Ef, FUVs, Acc) end,
-    eval_b_generate(Bin, P, Bs0, Lf, Ef, CompFun, Acc0);
-eval_bc1(E, [{generate,_,P,L0}|Qs], Bs0, Lf, Ef, FUVs, Acc0) ->
-    {value,List,_Bs1} = expr(L0, Bs0, Lf, Ef, none, FUVs),
-    CompFun = fun(Bs, Acc) -> eval_bc1(E, Qs, Bs, Lf, Ef, FUVs, Acc) end,
-    eval_generate(List, P, Bs0, Lf, Ef, CompFun, Acc0);
-eval_bc1(E, [F|Qs], Bs0, Lf, Ef, FUVs, Acc) ->
-    CompFun = fun(Bs) -> eval_bc1(E, Qs, Bs, Lf, Ef, FUVs, Acc) end,
-    eval_filter(F, Bs0, Lf, Ef, CompFun, FUVs, Acc);
+eval_bc1(E, [Q|Qs], Bs0, Lf, Ef, FUVs, Acc0) ->
+    case is_generator(Q) of
+        true ->
+            CF = fun(Bs, Acc) -> eval_bc1(E, Qs, Bs, Lf, Ef, FUVs, Acc) end,
+            eval_generator(Q, Bs0, Lf, Ef, FUVs, Acc0, CF);
+        false ->
+            CF = fun(Bs) -> eval_bc1(E, Qs, Bs, Lf, Ef, FUVs, Acc0) end,
+            eval_filter(Q, Bs0, Lf, Ef, CF, FUVs, Acc0)
+    end;
 eval_bc1(E, [], Bs, Lf, Ef, FUVs, Acc) ->
     {value,V,_} = expr(E, Bs, Lf, Ef, none, FUVs),
     <<Acc/bitstring,V/bitstring>>.
+
+
+%% eval_mc(Expr, [Qualifier], Bindings, LocalFunctionHandler,
+%%         ExternalFuncHandler, RetBindings) ->
+%%	{value,Value,Bindings} | Value
+
+eval_mc(E, Qs, Bs, Lf, Ef, RBs, FUVs) ->
+    L = eval_mc1(E, Qs, Bs, Lf, Ef, FUVs, []),
+    Map = maps:from_list(L),
+    ret_expr(Map, Bs, RBs).
+
+eval_mc1(E, [Q|Qs], Bs0, Lf, Ef, FUVs, Acc0) ->
+    case is_generator(Q) of
+        true ->
+            CF = fun(Bs, Acc) -> eval_mc1(E, Qs, Bs, Lf, Ef, FUVs, Acc) end,
+            eval_generator(Q, Bs0, Lf, Ef, FUVs, Acc0, CF);
+        false ->
+            CF = fun(Bs) -> eval_mc1(E, Qs, Bs, Lf, Ef, FUVs, Acc0) end,
+            eval_filter(Q, Bs0, Lf, Ef, CF, FUVs, Acc0)
+    end;
+eval_mc1({map_field_assoc,Lfa,K0,V0}, [], Bs, Lf, Ef, FUVs, Acc) ->
+    {value,KV,_} = expr({tuple,Lfa,[K0,V0]}, Bs, Lf, Ef, none, FUVs),
+    [KV|Acc].
+
+eval_generator({generate,_Anno,P,L0}, Bs0, Lf, Ef, FUVs, Acc0, CompFun) ->
+    {value,L1,_Bs1} = expr(L0, Bs0, Lf, Ef, none, FUVs),
+    eval_generate(L1, P, Bs0, Lf, Ef, CompFun, Acc0);
+eval_generator({b_generate,_Anno,P,Bin0}, Bs0, Lf, Ef, FUVs, Acc0, CompFun) ->
+    {value,Bin,_Bs1} = expr(Bin0, Bs0, Lf, Ef, none, FUVs),
+    eval_b_generate(Bin, P, Bs0, Lf, Ef, CompFun, Acc0);
+eval_generator({m_generate,Anno,P,Map0}, Bs0, Lf, Ef, FUVs, Acc0, CompFun) ->
+    {map_field_exact,_,K,V} = P,
+    {value,Map,_Bs1} = expr(Map0, Bs0, Lf, Ef, none, FUVs),
+    Iter = case is_map(Map) of
+               true ->
+                   maps:iterator(Map);
+               false ->
+                   %% Validate iterator.
+                   try maps:foreach(fun(_, _) -> ok end, Map) of
+                       _ ->
+                           Map
+                   catch
+                       _:_ ->
+                           apply_error({bad_generator,Map}, ?STACKTRACE,
+                                       Anno, Bs0, Ef, none)
+                   end
+           end,
+    eval_m_generate(Iter, {tuple,Anno,[K,V]}, Anno, Bs0, Lf, Ef, CompFun, Acc0).
 
 eval_generate([V|Rest], P, Bs0, Lf, Ef, CompFun, Acc) ->
     case match(P, V, new_bindings(Bs0), Bs0) of
@@ -804,6 +853,22 @@ eval_b_generate(<<_/bitstring>>=Bin, P, Bs0, Lf, Ef, CompFun, Acc) ->
 eval_b_generate(Term, _P, _Bs0, _Lf, _Ef, _CompFun, _Acc) ->
     erlang:raise(error, {bad_generator,Term}, ?STACKTRACE).
 
+
+eval_m_generate(Iter0, P, Anno, Bs0, Lf, Ef, CompFun, Acc0) ->
+    case maps:next(Iter0) of
+        {K,V,Iter} ->
+            case match(P, {K,V}, new_bindings(Bs0), Bs0) of
+                {match,Bsn} ->
+                    Bs2 = add_bindings(Bsn, Bs0),
+                    Acc = CompFun(Bs2, Acc0),
+                    eval_m_generate(Iter, P, Anno, Bs0, Lf, Ef, CompFun, Acc);
+                nomatch ->
+                    eval_m_generate(Iter, P, Anno, Bs0, Lf, Ef, CompFun, Acc0)
+            end;
+        none ->
+            Acc0
+    end.
+
 eval_filter(F, Bs0, Lf, Ef, CompFun, FUVs, Acc) ->
     case erl_lint:is_guard_test(F) of
 	true ->
@@ -819,6 +884,11 @@ eval_filter(F, Bs0, Lf, Ef, CompFun, FUVs, Acc) ->
                     erlang:raise(error, {bad_filter,V}, ?STACKTRACE)
 	    end
     end.
+
+is_generator({generate,_,_,_}) -> true;
+is_generator({b_generate,_,_,_}) -> true;
+is_generator({m_generate,_,_,_}) -> true;
+is_generator(_) -> false.
 
 %% eval_map_fields([Field], Bindings, LocalFunctionHandler,
 %%                 ExternalFuncHandler) ->
