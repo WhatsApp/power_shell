@@ -26,12 +26,14 @@
     handle_call/3,
     handle_cast/2]).
 
+-export_type([function_map/0]).
+
 -define(SERVER, ?MODULE).
 
 -include_lib("kernel/include/file.hrl").
 -include_lib("kernel/include/logger.hrl").
 
--type function_clause() :: {function, integer(), atom(), arity(), {clauses, erl_eval:clauses()}}.
+-type function_clause() :: {function, integer(), atom(), arity(), {clauses, [erl_parse:abstract_clause()]}}.
 
 -type function_map() :: #{{atom(), arity()} => function_clause()}.
 

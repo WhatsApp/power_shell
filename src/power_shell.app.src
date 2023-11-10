@@ -5,7 +5,8 @@
   {mod, {power_shell_app, []}},
   {applications,
    [kernel,
-    stdlib
+    stdlib,
+    compiler
    ]},
   {env, [
     % {cache_code, false},                % do not use cache, decompile every call

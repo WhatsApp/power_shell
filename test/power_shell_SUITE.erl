@@ -108,7 +108,7 @@ init_per_group(cached, Config) ->
     Loaded = application:load(power_shell),
     ?assert(Loaded =:= ok orelse Loaded =:= {error,{already_loaded,power_shell}}),
     ok = application:set_env(power_shell, cache_code, true),
-    ok = application:start(power_shell),
+    {ok, _} = application:ensure_all_started(power_shell),
     Config;
 init_per_group(_GroupName, Config) ->
     Config.

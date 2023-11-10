@@ -85,7 +85,7 @@ shell_default_inject() ->
 
 shell_default_inject(_Config) ->
     ok = application:set_env(power_shell, shell_integration, shell_default),
-    ok = application:start(power_shell),
+    {ok, _} = application:ensure_all_started(power_shell),
     % so shell_default must be working now, right?
     [1, 2] = shell_default:eval(lists, seq, [1,2]),
     ok.
@@ -95,7 +95,7 @@ user_default() ->
 
 user_default(_Config) ->
     ok = application:set_env(power_shell, shell_integration, user_default),
-    ok = application:start(power_shell),
+    {ok, _} = application:ensure_all_started(power_shell),
     % so shell_default must be working now, right?
     [1, 2] = user_default:eval(lists, seq, [1,2]),
     ok.

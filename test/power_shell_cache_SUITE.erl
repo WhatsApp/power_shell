@@ -53,7 +53,7 @@ init_per_suite(Config) ->
     Loaded = application:load(power_shell),
     ?assert(Loaded =:= ok orelse Loaded =:= {error,{already_loaded,power_shell}}),
     ok = application:set_env(power_shell, cache_code, true),
-    ok = application:start(power_shell),
+    {ok, _} = application:ensure_all_started(power_shell),
     % make a backup of power_shell_SUITE.beam
     Path = code:which(?VICTIM),
     % into private data dir

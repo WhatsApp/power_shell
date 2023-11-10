@@ -18,6 +18,14 @@
 -export([inject/2,
     eject/2]).
 
+-export_type([inject_error/0]).
+
+-type inject_error() ::
+    already_loaded |
+    no_abstract_code |
+    {badmatch, module()} |
+    {beam_lib, beam_lib:chnk_rsn()}.
+
 %%====================================================================
 %% API
 
@@ -40,11 +48,7 @@
 %% @param WhereTo Module name to add proxy methods to
 %% @param Mod Module name to proxy calls to
 
--spec inject(WhereTo :: module(), Mod :: module()) -> ok |
-                                                      {error, already_loaded} |
-                                                      {error, no_abstract_code} |
-                                                      {error, {badmatch, module()}} |
-                                                      {error, {beam_lib, beam_lib:chnk_rsn()}}.
+-spec inject(WhereTo :: module(), Mod :: module()) -> ok | {error, inject_error()}.
 inject(WhereTo, Mod) when is_atom(WhereTo), is_atom(Mod) ->
     Filename = atom_to_list(Mod),
     case code:which(WhereTo) of

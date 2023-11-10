@@ -50,7 +50,7 @@ stop(_State) ->
 %%      For user_default, if there is no other user_default module
 %%      loaded, just rename power_shell to user_default and load as
 %%      binary.
--spec integrate(user_default | shell_default) -> ok | {error, code:loaded_ret_atoms()}.
+-spec integrate(user_default | shell_default) -> ok | {error, power_shell_default:inject_error()}.
 
 integrate(shell_default) ->
     ok = power_shell_default:inject(shell_default, power_shell);
